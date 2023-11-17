@@ -19,6 +19,7 @@
 #include "share/inner_table/ob_inner_table_schema.h"
 #include "rootserver/ob_ddl_service.h"
 #include "rootserver/ob_unit_manager.h"
+#include "lib/thread/ob_dynamic_thread_pool.h"
 
 namespace oceanbase
 {
@@ -131,6 +132,17 @@ public:
   private:
     int ret_;
   };
+class BatchCreateSchemaTask: public ObDynamicThreadTask
+{
+public: 
+  BatchCreateSchemaTask(rootserver::ObDDLService &ddl, ObIArray<ObTableSchema> &schemas, int64_t b, int64_t e)
+    : ddl_service_(ddl), table_schemas_(schemas), begin_(b), end_(e){}
+  int process(const bool &is_stop) override;
+  rootserver::ObDDLService &ddl_service_;
+  ObIArray<ObTableSchema> &table_schemas_;
+  int64_t begin_;
+  int64_t end_;
+};
   explicit ObBootstrap(obrpc::ObSrvRpcProxy &rpc_proxy,
                        share::ObLSTableOperator &lst_operator,
                        ObDDLService &ddl_service,
