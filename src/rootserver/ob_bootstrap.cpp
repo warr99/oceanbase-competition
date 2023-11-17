@@ -35,6 +35,7 @@
 #include "share/ob_global_stat_proxy.h"
 #include "share/ob_server_status.h"
 #include "lib/worker.h"
+#include "lib/thread/ob_dynamic_thread_pool.h"
 #include "share/config/ob_server_config.h"
 #include "share/ob_primary_zone_util.h"
 #include "share/ob_schema_status_proxy.h"
@@ -966,30 +967,50 @@ int ObBootstrap::create_all_schema(ObDDLService &ddl_service,
     int64_t begin = 0;
     int64_t batch_count = BATCH_INSERT_SCHEMA_CNT;
     const int64_t MAX_RETRY_TIMES = 3;
+    ObDynamicThreadPool pool;
+    const int64_t task_count = (table_schemas.count() / BATCH_INSERT_SCHEMA_CNT) + 1;
+    pool.init("batch_create_schema_pool");
+    pool.set_task_thread_num(task_count);
+    pool.start();
+    LOG_INFO("init batch_create_schema_pool",
+             "task_count", task_count);
+    int times = 0;
     for (int64_t i = 0; OB_SUCC(ret) && i < table_schemas.count(); ++i) {
       if (table_schemas.count() == (i + 1) || (i + 1 - begin) >= batch_count) {
-        int64_t retry_times = 1;
-        while (OB_SUCC(ret)) {
-          if (OB_FAIL(batch_create_schema(ddl_service, table_schemas, begin, i + 1))) {
-            LOG_WARN("batch create schema failed", K(ret), "table count", i + 1 - begin);
-            // bugfix:
-            if ((OB_SCHEMA_EAGAIN == ret
-                 || OB_ERR_WAIT_REMOTE_SCHEMA_REFRESH == ret)
-                && retry_times <= MAX_RETRY_TIMES) {
-              retry_times++;
-              ret = OB_SUCCESS;
-              LOG_INFO("schema error while create table, need retry", KR(ret), K(retry_times));
-              ob_usleep(1 * 1000 * 1000L); // 1s
-            }
-          } else {
-            break;
-          }
-        }
+        // 每次达到一个 batch_create_schema 的条件都创建一个task丢到线程池中执行
+        // TODO batch_task 内存泄露，线程没有名字
+        LOG_INFO("create new task",
+                 "begin index", begin,
+                 "end index", i + 1);
+        BatchCreateSchemaTask *batch_task = new BatchCreateSchemaTask(ddl_service, table_schemas, begin, i + 1);
+        pool.add_task(batch_task);
+        // const int64_t batch_create_begin_time = ObTimeUtility::current_time();
+        // int64_t retry_times = 1;
+        // while (OB_SUCC(ret)) {
+        //   if (OB_FAIL(batch_create_schema(ddl_service, table_schemas, begin, i + 1))) {
+        //     LOG_WARN("batch create schema failed", K(ret), "table count", i + 1 - begin);
+        //     // bugfix:
+        //     if ((OB_SCHEMA_EAGAIN == ret
+        //          || OB_ERR_WAIT_REMOTE_SCHEMA_REFRESH == ret)
+        //         && retry_times <= MAX_RETRY_TIMES) {
+        //       retry_times++;
+        //       ret = OB_SUCCESS;
+        //       LOG_INFO("schema error while create table, need retry", KR(ret), K(retry_times));
+        //       ob_usleep(1 * 1000 * 1000L); // 1s
+        //     }
+        //   } else {
+        //     break;
+        //   }
+        // }
         if (OB_SUCC(ret)) {
           begin = i + 1;
         }
       }
     }
+    LOG_INFO("wait for task running 4.5s");
+    ob_usleep(4.5 * 1000 * 1000L);
+    pool.stop();
+    pool.destroy();
   }
   LOG_INFO("end create all schemas", K(ret), "table count", table_schemas.count(),
            "time_used", ObTimeUtility::current_time() - begin_time);
@@ -1680,6 +1701,36 @@ int ObBootstrap::set_in_bootstrap()
   return ret;
 }
 
-
+int ObBootstrap::BatchCreateSchemaTask::process(const bool &is_stop)
+{
+  int ret = OB_SUCCESS;
+  int64_t retry_times = 1;
+  const int64_t MAX_RETRY_TIMES = 3;
+  const int64_t batch_create_begin_time = ObTimeUtility::current_time();
+  LOG_INFO("start create a batch of schemas",
+          "start_time", batch_create_begin_time,
+          "begin", begin_,
+          "end", end_);
+  while (OB_SUCC(ret)) {
+    if (OB_FAIL(batch_create_schema(ddl_service_, table_schemas_, begin_, end_))) {
+      LOG_WARN("batch create schema failed", K(ret), "table count", end_ + 1 - begin_);
+      // bugfix:
+      if ((OB_SCHEMA_EAGAIN == ret
+            || OB_ERR_WAIT_REMOTE_SCHEMA_REFRESH == ret)
+          && retry_times <= MAX_RETRY_TIMES) {
+        retry_times++;
+        ret = OB_SUCCESS;
+        LOG_INFO("schema error while create table, need retry", KR(ret), K(retry_times));
+        ob_usleep(1 * 1000 * 1000L); // 1s
+      }
+    } else {
+      break;
+    }
+  }  
+  LOG_INFO("end create a batch of schemas",
+          "time_used", ObTimeUtility::current_time() - batch_create_begin_time,
+          "table count", end_ + 1 - begin_);
+  return 0;
+}
 } // end namespace rootserver
 } // end namespace oceanbase
