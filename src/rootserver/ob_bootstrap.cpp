@@ -1007,8 +1007,8 @@ int ObBootstrap::create_all_schema(ObDDLService &ddl_service,
         }
       }
     }
-    LOG_INFO("wait for task running 4.5s");
-    ob_usleep(4.5 * 1000 * 1000L);
+    LOG_INFO("wait for task running 6s");
+    ob_usleep(6 * 1000 * 1000L);
     pool.stop();
     pool.destroy();
   }
