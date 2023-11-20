@@ -1440,6 +1440,7 @@ int ObService::bootstrap(const obrpc::ObBootstrapArg &arg)
         if (INT64_MAX != THIS_WORKER.get_timeout_ts()) {
           rpc_timeout = max(rpc_timeout, THIS_WORKER.get_timeout_remain());
         }
+        // 发送OB_EXECUTE_BOOSTRAP给leader进行真正的集群bootstrap过程
         if (OB_FAIL(rpc_proxy.to_addr(master_rs).timeout(rpc_timeout)
                     .execute_bootstrap(arg))) {
           if (OB_RS_NOT_MASTER == ret) {

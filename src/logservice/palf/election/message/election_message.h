@@ -116,19 +116,21 @@ public:
                K_(ballot_number), K_(debug_ts), K_(biggest_min_cluster_version_ever_seen));
   #undef MSG_TYPE
 protected:
-  int64_t id_;
-  common::ObAddr sender_;
-  common::ObAddr receiver_;
-  int64_t restart_counter_;
-  int64_t ballot_number_;
-  LsBiggestMinClusterVersionEverSeen biggest_min_cluster_version_ever_seen_;
-  int64_t msg_type_;
+  int64_t id_;    // 消息id
+  common::ObAddr sender_;   // 发送者
+  common::ObAddr receiver_; // 接收者
+  int64_t restart_counter_; // 重启计数器，用于跟踪节点的重启次数
+  int64_t ballot_number_; // 提案编号
+  LsBiggestMinClusterVersionEverSeen biggest_min_cluster_version_ever_seen_; // this is for maintain min_cluster_version on arb server
+  int64_t msg_type_; // 消息类型，用于标识消息的具体用途，如 PrepareRequest, PrepareResponse 等
   ElectionMsgDebugTs debug_ts_;
 };
 OB_SERIALIZE_MEMBER_TEMP(inline, ElectionMsgBase, id_, sender_, receiver_,
                          restart_counter_, ballot_number_, msg_type_, debug_ts_,
                          biggest_min_cluster_version_ever_seen_.version_);
-
+/**
+ * 请求消息 
+ */
 class ElectionPrepareRequestMsgMiddle : public ElectionMsgBase
 {
   OB_UNIS_VERSION(1);
@@ -154,8 +156,8 @@ public:
   #undef ROLE
   #undef BASE
 protected:
-  int64_t role_;
-  bool is_buffer_valid_;
+  int64_t role_;    // 节点的角色
+  bool is_buffer_valid_;  // 选举优先级缓冲区是否有效
   uint64_t inner_priority_seed_;
   LogConfigVersion membership_version_;
   unsigned char priority_buffer_[PRIORITY_BUFFER_SIZE];

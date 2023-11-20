@@ -827,6 +827,9 @@ int ObLSInfo::find_leader(const ObLSReplica *&replica) const
     int64_t laster_proposal_id = 0;
     int64_t index = 0;
     int64_t find_index = -1;
+    if (OB_LIKELY(replicas_.count() == 1)) {
+      LOG_INFO("has only one replica", "role", replicas_.at(0).get_role());
+    }
     FOREACH_CNT_X(r, replicas_, OB_SUCC(ret)) {
       if (r->get_proposal_id() > laster_proposal_id) {
         find_index = index;

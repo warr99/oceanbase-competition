@@ -454,6 +454,7 @@ int ObLSCreator::create_ls_(const ObILSAddr &addrs,
       }
 #endif
     }
+    LOG_INFO("wait all in ob_ls_creator finish");
   }
   return ret;
 }

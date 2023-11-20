@@ -900,7 +900,8 @@ protected:
                                   const int64_t schema_version);
   //refresh schema and update schema_manager_for_cache_
   //leave the job of schema object copy to get_schema func
-  int refresh_schema(const ObRefreshSchemaStatus &schema_status);
+  int refresh_schema(const ObRefreshSchemaStatus &schema_status, 
+                     ObSArray<ObTableSchema> *bootstrap_schemas = NULL);
 
   virtual int publish_schema(const uint64_t tenant_id) = 0;
   virtual int init_multi_version_schema_struct(const uint64_t tenant_id) = 0;
@@ -975,10 +976,18 @@ private:
 
   int refresh_increment_schema(const ObRefreshSchemaStatus &schema_status);
   int refresh_full_schema(const ObRefreshSchemaStatus &schema_status);
+  int refresh_full_schema_bootstrap(const ObRefreshSchemaStatus &schema_status, ObSArray<ObTableSchema> &schemas);
   int refresh_tenant_full_normal_schema(
       common::ObISQLClient &sql_client,
       const ObRefreshSchemaStatus &schema_status,
       const int64_t schema_version);
+  /**
+   * 仅提供给bootstrap阶段刷新schema使用
+   */
+  int fresh_sys_tenant_full_normal_schema(ObISQLClient &sql_client,
+                            const ObRefreshSchemaStatus &schema_status,
+                            const int64_t schema_version, 
+                            ObArray<ObTableSchema *> &non_sys_tables);
 
 #define GET_INCREMENT_SCHEMA_KEY_FUNC_DECLARE(SCHEMA)               \
   int get_increment_##SCHEMA##_keys(const ObSchemaMgr &schema_guard,  \
@@ -1108,6 +1117,11 @@ private:
                                     const int64_t publish_version,
                                     common::ObISQLClient &sql_client,
                                     bool &sys_schema_change);
+
+  int try_fetch_bootstrap_publish_schemas(const ObRefreshSchemaStatus &schema_status,
+                                const int64_t publish_version,
+                                ObArray<ObTableSchema *> &tables,
+                                bool &schema_change);
 
   int check_core_or_sys_schema_change(common::ObISQLClient &sql_client,
                                       const ObRefreshSchemaStatus &schema_status,

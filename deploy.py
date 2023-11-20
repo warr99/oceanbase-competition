@@ -146,8 +146,10 @@ if __name__ == "__main__":
         db = __try_to_connect(args.ip, int(args.mysql_port))
         cursor = db.cursor(cursor=mysql.cursors.DictCursor)
         _logger.info(f'connect to server success! host={args.ip}, port={args.mysql_port}')
+
         if args.only_build_env:
             exit(0)
+
         bootstrap_begin = datetime.datetime.now()
         cursor.execute(f"ALTER SYSTEM BOOTSTRAP ZONE '{args.zone}' SERVER '{rootservice}'")
         bootstrap_end = datetime.datetime.now()

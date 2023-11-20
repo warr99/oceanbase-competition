@@ -21,6 +21,7 @@
 *.tmp
 *my
 *~
+tmp/
 .auth_file
 .auth_file
 .autotools

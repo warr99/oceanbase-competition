@@ -26255,7 +26255,9 @@ int ObDDLService::alter_tablegroup(const ObAlterTablegroupArg &arg)
   return ret;
 }
 
-int ObDDLService::refresh_schema(uint64_t tenant_id, int64_t *publish_schema_version /*NULL*/)
+int ObDDLService::refresh_schema(uint64_t tenant_id, 
+                                 int64_t *publish_schema_version /*NULL*/, 
+                                 ObSArray<ObTableSchema> *schema_bootstrap /* = NULL*/)
 {
   int ret = OB_SUCCESS;
   int64_t refresh_count = 0;
@@ -26278,7 +26280,7 @@ int ObDDLService::refresh_schema(uint64_t tenant_id, int64_t *publish_schema_ver
         LOG_ERROR("fail to set timeout_ctx, refresh schema failed", KR(ret), K(tenant_id));
         break;
       } else {
-        ret = schema_service_->refresh_and_add_schema(tenant_ids);
+        ret = schema_service_->refresh_and_add_schema(tenant_ids, false, schema_bootstrap);
       }
 
       if (OB_SUCC(ret)) {
