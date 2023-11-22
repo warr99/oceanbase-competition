@@ -444,11 +444,6 @@ int ObSchemaServiceSQLImpl::get_new_schema_version(uint64_t tenant_id, int64_t &
 
 bool ObSchemaServiceSQLImpl::in_parallel_ddl_thread_()
 {
-  int ret = OB_SUCCESS;
-  if(ob_get_origin_thread_name() == nullptr) {
-    LOG_INFO("ob_get_origin_thread_name is null", K(ret));
-    return false;
-  }
   return 0 == STRCASECMP(PARALLEL_DDL_THREAD_NAME, ob_get_origin_thread_name());
 }
 
