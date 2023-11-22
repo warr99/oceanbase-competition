@@ -9,6 +9,21 @@ import shutil
 import logging
 import traceback
 
+log_level = logging.INFO
+log_format = "%(asctime)s.%(msecs)03d [%(levelname)-5s] - %(message)s " \
+            "(%(name)s [%(funcName)s@%(filename)s:%(lineno)s] [%(threadName)s] P:%(process)d T:%(thread)d)"
+log_date_format = "%Y-%m-%d %H:%M:%S"
+
+# Update the basicConfig to include a file handler
+logging.basicConfig(
+    format=log_format,
+    level=log_level,
+    datefmt=log_date_format,
+    handlers=[
+        logging.FileHandler('./deploy.log'),  # Log to a file named deploy.log
+        logging.StreamHandler(sys.stdout)     # Log to the console
+    ]
+)
 _logger = logging.getLogger('DeployDemo')
 
 def param_check(args):
@@ -62,23 +77,35 @@ def __create_tenant(cursor, *,
     create_resource_pool_sql = f"CREATE RESOURCE POOL {resource_pool_name} unit='{unit_name}', unit_num=1,ZONE_LIST=('{zone_name}');"
     create_tenant_sql = f"CREATE TENANT IF NOT EXISTS {tenant_name} resource_pool_list = ('{resource_pool_name}') set ob_tcp_invited_nodes = '%';"
 
+    # unit create
+    _logger.info(f'execute unit create: {create_unit_sql}')   
+    unit_create_begin = datetime.datetime.now()       
     cursor.execute(create_unit_sql)
-    _logger.info(f'unit create done: {create_unit_sql}')
+    unit_create_end = datetime.datetime.now()       
+    _logger.info('unit create done %s ms' % ((unit_create_end - unit_create_begin).total_seconds() * 1000))
 
+    # resource pool create  
+    _logger.info(f'execute resource pool create: {create_resource_pool_sql}')   
+    resource_pool_create_begin = datetime.datetime.now()       
     cursor.execute(create_resource_pool_sql)
-    _logger.info(f'resource pool create done: {create_unit_sql}')
+    resource_pool_create_end = datetime.datetime.now()       
+    _logger.info('execute resource pool done %s ms' % ((resource_pool_create_end - resource_pool_create_begin).total_seconds() * 1000))
 
+    # tenant create
+    _logger.info(f'execute tenant create: {create_tenant_sql}')   
+    tenant_create_begin = datetime.datetime.now()   
     cursor.execute(create_tenant_sql)
-    _logger.info(f'tenant create done: {create_unit_sql}')
+    tenant_create_end = datetime.datetime.now()       
+    _logger.info('execute tenant create done %s ms' % ((tenant_create_end - tenant_create_begin).total_seconds() * 1000))
 
 
 if __name__ == "__main__":
-    log_level = logging.INFO
-    log_format = "%(asctime)s.%(msecs)03d [%(levelname)-5s] - %(message)s " \
-                "(%(name)s [%(funcName)s@%(filename)s:%(lineno)s] [%(threadName)s] P:%(process)d T:%(thread)d)"
-    log_date_format = "%Y-%m-%d %H:%M:%S"
+    # log_level = logging.INFO
+    # log_format = "%(asctime)s.%(msecs)03d [%(levelname)-5s] - %(message)s " \
+    #             "(%(name)s [%(funcName)s@%(filename)s:%(lineno)s] [%(threadName)s] P:%(process)d T:%(thread)d)"
+    # log_date_format = "%Y-%m-%d %H:%M:%S"
 
-    logging.basicConfig(format=log_format, level=log_level, datefmt=log_date_format, stream=sys.stdout)
+    # logging.basicConfig(format=log_format, level=log_level, datefmt=log_date_format, stream=sys.stdout)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--cluster-home-path", dest='cluster_home_path', type=str, help="the path of sys log / config file / sql.sock / audit info")
