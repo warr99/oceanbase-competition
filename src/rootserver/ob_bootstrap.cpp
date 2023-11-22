@@ -987,9 +987,8 @@ int ObBootstrap::parallel_create_table_schema(ObDDLService &ddl_service, ObIArra
   for (int64_t i = 0; OB_SUCC(ret) && i < table_schemas.count(); ++i) {
     if (table_schemas.count() == (i + 1) || (i + 1 - begin) >= batch_count) {
       std::thread th([&, begin, i, cur_trace_id] () {
-        std::string thread_name = "work_job_" + std::to_string(i);
-        const char* thread_name_cstr = thread_name.c_str();
-        set_thread_name(thread_name_cstr);
+        std::string thread_name = "work_job_" + std::to_string(begin);
+        lib::set_thread_name(thread_name.c_str());
         const int64_t job_begin_time = ObTimeUtility::current_time();
         LOG_INFO("worker job start", "start time", job_begin_time);
         int ret = OB_SUCCESS;
