@@ -132,17 +132,7 @@ public:
   private:
     int ret_;
   };
-class BatchCreateSchemaTask: public ObDynamicThreadTask
-{
-public: 
-  BatchCreateSchemaTask(rootserver::ObDDLService &ddl, ObIArray<ObTableSchema> &schemas, int64_t b, int64_t e)
-    : ddl_service_(ddl), table_schemas_(schemas), begin_(b), end_(e){}
-  int process(const bool &is_stop) override;
-  rootserver::ObDDLService &ddl_service_;
-  ObIArray<ObTableSchema> &table_schemas_;
-  int64_t begin_;
-  int64_t end_;
-};
+  
   explicit ObBootstrap(obrpc::ObSrvRpcProxy &rpc_proxy,
                        share::ObLSTableOperator &lst_operator,
                        ObDDLService &ddl_service,
@@ -156,6 +146,7 @@ public:
   static int create_all_schema(
       ObDDLService &ddl_service,
       common::ObIArray<share::schema::ObTableSchema> &table_schemas);
+  static int parallel_create_table_schema(ObDDLService &ddl_service, ObIArray<ObTableSchema> &table_schemas);
   int construct_all_schema(
       common::ObIArray<share::schema::ObTableSchema> &table_schemas);
   int sort_schema(const common::ObIArray<share::schema::ObTableSchema> &table_schemas,

@@ -207,6 +207,7 @@ ob_set_subtarget(oblib_lib signal
 ob_set_subtarget(oblib_lib thread
   thread/ob_async_task_queue.cpp
   thread/ob_dynamic_thread_pool.cpp
+  thread/ob_batch_create_schema_thread_pool.cpp
   thread/ob_reentrant_thread.cpp
   thread/ob_simple_thread_pool.cpp
   thread/ob_map_queue_thread_pool.cpp
