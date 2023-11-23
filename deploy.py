@@ -13,17 +13,7 @@ log_level = logging.INFO
 log_format = "%(asctime)s.%(msecs)03d [%(levelname)-5s] - %(message)s " \
             "(%(name)s [%(funcName)s@%(filename)s:%(lineno)s] [%(threadName)s] P:%(process)d T:%(thread)d)"
 log_date_format = "%Y-%m-%d %H:%M:%S"
-
-# Update the basicConfig to include a file handler
-logging.basicConfig(
-    format=log_format,
-    level=log_level,
-    datefmt=log_date_format,
-    handlers=[
-        logging.FileHandler('./deploy.log'),  # Log to a file named deploy.log
-        logging.StreamHandler(sys.stdout)     # Log to the console
-    ]
-)
+logging.basicConfig(format=log_format, level=log_level, datefmt=log_date_format, stream=sys.stdout)
 _logger = logging.getLogger('DeployDemo')
 
 def param_check(args):
