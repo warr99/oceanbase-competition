@@ -979,7 +979,7 @@ int ObBootstrap::parallel_create_table_schema(ObDDLService &ddl_service, ObIArra
 {
   int ret = OB_SUCCESS;
   int64_t begin = 0;
-  int64_t batch_count = table_schemas.count() / 16;
+  int64_t batch_count = (table_schemas.count() + 15) / 16;
   const int64_t MAX_RETRY_TIMES = 10;
   int64_t finish_cnt = 0;
   std::vector<std::thread> ths;
@@ -989,10 +989,10 @@ int ObBootstrap::parallel_create_table_schema(ObDDLService &ddl_service, ObIArra
       std::thread th([&, begin, i, cur_trace_id] () {
         std::string thread_name = "work_job_" + std::to_string(begin);
         lib::set_thread_name(thread_name.c_str());
+        ObCurTraceId::set(*cur_trace_id);
         const int64_t job_begin_time = ObTimeUtility::current_time();
         LOG_INFO("worker job start", "start time", job_begin_time);
         int ret = OB_SUCCESS;
-        ObCurTraceId::set(*cur_trace_id);
         int64_t retry_times = 1;
         while (OB_SUCC(ret)) {
           if (OB_FAIL(batch_create_schema(ddl_service, table_schemas, begin, i + 1))) {
@@ -1009,7 +1009,7 @@ int ObBootstrap::parallel_create_table_schema(ObDDLService &ddl_service, ObIArra
             break;
           }
         }
-        LOG_INFO("worker job end", K(begin), K(i), K(i-begin), K(ret), "cost", ObTimeUtility::current_time() - job_begin_time);
+        LOG_INFO("worker job end", K(begin), K(i), "table count", i + 1 - begin, K(ret), "cost", ObTimeUtility::current_time() - job_begin_time);
       });
 
       ths.push_back(std::move(th));
