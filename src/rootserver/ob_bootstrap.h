@@ -19,6 +19,7 @@
 #include "share/inner_table/ob_inner_table_schema.h"
 #include "rootserver/ob_ddl_service.h"
 #include "rootserver/ob_unit_manager.h"
+#include "lib/thread/ob_dynamic_thread_pool.h"
 
 namespace oceanbase
 {
@@ -131,6 +132,7 @@ public:
   private:
     int ret_;
   };
+  
   explicit ObBootstrap(obrpc::ObSrvRpcProxy &rpc_proxy,
                        share::ObLSTableOperator &lst_operator,
                        ObDDLService &ddl_service,
@@ -144,6 +146,7 @@ public:
   static int create_all_schema(
       ObDDLService &ddl_service,
       common::ObIArray<share::schema::ObTableSchema> &table_schemas);
+  static int parallel_create_table_schema(ObDDLService &ddl_service, ObIArray<ObTableSchema> &table_schemas);
   int construct_all_schema(
       common::ObIArray<share::schema::ObTableSchema> &table_schemas);
   int sort_schema(const common::ObIArray<share::schema::ObTableSchema> &table_schemas,
