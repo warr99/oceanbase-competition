@@ -329,6 +329,7 @@ void ElectionProposer::prepare(const ObRole role)
   ELECT_TIME_GUARD(500_ms);
   #define PRINT_WRAPPER KR(ret), K(role), K(*this)
   int ret = OB_SUCCESS;
+  LOG_PHASE(INFO, phase, "watch prepare start");
   int64_t cur_ts = ObClockGenerator::getCurrentTime();
   LogPhase phase = role == ObRole::LEADER ? LogPhase::RENEW_LEASE : LogPhase::ELECT_LEADER;
   if (memberlist_with_states_.get_member_list().get_addr_list().empty()) {

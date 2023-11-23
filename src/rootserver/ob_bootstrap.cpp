@@ -1056,7 +1056,7 @@ int ObBootstrap::batch_create_schema(ObDDLService &ddl_service,
         bool need_sync_schema_version = !(ObSysTableChecker::is_sys_table_index_tid(table.get_table_id()) ||
                                           is_sys_lob_table(table.get_table_id()));
         int64_t start_time = ObTimeUtility::current_time();
-        // 或许可以多线程的去创建表
+
         if (OB_FAIL(ddl_operator.create_table(table, trans, ddl_stmt,
                                               need_sync_schema_version,
                                               is_truncate_table))) {

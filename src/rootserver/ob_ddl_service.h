@@ -2048,6 +2048,7 @@ private:
       const ObString &tenant_name,
       const share::ObTenantRole &tenant_role);
   int create_sys_table_schemas(
+      uint64_t tenant_id,
       ObDDLOperator &ddl_operator,
       ObMySQLTransaction &trans,
       common::ObIArray<share::schema::ObTableSchema> &tables);
