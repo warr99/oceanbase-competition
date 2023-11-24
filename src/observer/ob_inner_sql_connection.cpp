@@ -1406,7 +1406,9 @@ int ObInnerSQLConnection::execute_write(const uint64_t tenant_id, const ObString
     int64_t &affected_rows, bool is_user_sql, const common::ObAddr *sql_exec_addr)
 {
   int ret = OB_SUCCESS;
-  auto function = [&]() { return execute_write_inner(tenant_id, sql, affected_rows, is_user_sql, sql_exec_addr); };
+  auto function = [&]() {
+    // LOG_INFO("execute write inner", "sql", sql);
+    return execute_write_inner(tenant_id, sql, affected_rows, is_user_sql, sql_exec_addr); };
   if (OB_FAIL(retry_while_no_tenant_resource(GCONF.cluster_id, tenant_id, function))) {
     LOG_WARN("execute_write failed", K(ret), K(tenant_id), K(sql), K(is_user_sql));
   }

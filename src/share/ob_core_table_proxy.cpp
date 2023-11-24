@@ -724,15 +724,19 @@ int ObCoreTableProxy::update(const ObIArray<UpdateCell> &cells,
   } else {
     affected_rows = 0;
     int64_t match_rows = 0;
+    // 将 dml 得到的 update cells 与匹配的 row 的 cell 进行逐一比较
     FOREACH_X(row, all_row_, OB_SUCCESS == ret) {
       bool match = false;
       if (OB_FAIL(check_row_match(*row, cells, match))) {
         LOG_WARN("check row match failed", K(ret), "row", *row, K(cells));
       } else {
+        // 如果找到匹配的行，就执行更新操作
         if (match) {
           match_rows++;
+          // 通过execute_update_sql函数执行SQL语句来更新_all_core_table
           if (OB_FAIL(execute_update_sql(*row, cells, affected_rows))) {
             LOG_WARN("execute update sql failed", K(ret));
+            // 通过update_row_struct更新ObCoreTableProxy中缓存的行
           } else if (OB_FAIL(update_row_struct(cells, *row))) {
             LOG_WARN("update row failed", K(ret), "row", *row);
           }
@@ -741,19 +745,23 @@ int ObCoreTableProxy::update(const ObIArray<UpdateCell> &cells,
     }
 
     if (OB_SUCC(ret)) {
+      // 如果是 insert 操作
       if (0 == match_rows && insert) {
         Row insert_row;
         int64_t new_row_id = 0;
+        // 利用 ObCoreTableProxy:all_row_ 的最大 row_id 获得新的 row_id
         if (OB_FAIL(generate_row_id(new_row_id))) {
           LOG_WARN("generate row id failed", K(ret));
         } else {
           ObArray<Cell> empty_cells;
+          // 构造一个空 row
           if (OB_FAIL(insert_row.init(new_row_id, *this, empty_cells))) {
             LOG_WARN("init row failed", K(ret), K(new_row_id));
           }
         }
         ObArray<Cell> new_cells;
         if (OB_FAIL(ret)) {
+          // 调用 execute_update_sql
         } else if (OB_FAIL(execute_update_sql(insert_row, cells, affected_rows))) {
           LOG_WARN("execute update sql failed", K(ret));
         } else {

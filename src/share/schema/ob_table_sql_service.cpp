@@ -83,13 +83,17 @@ int ObTableSqlService::exec_insert(
     int64_t &affected_rows)
 {
   int ret = OB_SUCCESS;
+  // 判断当前表是否是核心表
   if (is_core_table(table_id)) {
+    // 如果是则会在 _all_core_table 中通过 select for update 语句对 _all_table 进行加锁 (load_for_update),然后进行 replace 操作
     ObArray<ObCoreTableProxy::UpdateCell> cells;
     ObCoreTableProxy kv(table_name, sql_client, tenant_id);
+    // 对 _all_table 进行加锁
     if (OB_FAIL(kv.load_for_update())) {
       LOG_WARN("failed to load kv for insert", K(ret));
     } else if (OB_FAIL(dml.splice_core_cells(kv, cells))) {
       LOG_WARN("splice core cells failed", K(ret));
+      // replace 操作
     } else if (OB_FAIL(kv.replace_row(cells, affected_rows))) {
       LOG_WARN("failed to replace row", K(ret));
     }
@@ -1886,7 +1890,7 @@ int ObTableSqlService::add_table(
     LOG_USER_ERROR(OB_NOT_SUPPORTED, "tenant data version is less than 4.1, spatial index");
   } else if (OB_FAIL(check_ddl_allowed(table))) {
     LOG_WARN("check ddl allowd failed", K(ret), K(table));
-  } else if (OB_FAIL(gen_table_dml(exec_tenant_id, table, update_object_status_ignore_version, dml))) {
+  } else if (OB_FAIL(gen_table_dml(exec_tenant_id, table, update_object_status_ignore_version, dml))) { // 通过 gen_table_dml首先构造了需要更新 _all_table_history 以及 _all_core_table 的cells;
     LOG_WARN("gen table dml failed", K(ret));
   } else {
     ObDMLExecHelper exec(sql_client, exec_tenant_id);
@@ -1895,7 +1899,7 @@ int ObTableSqlService::add_table(
       const char *table_name = NULL;
       if (OB_FAIL(ObSchemaUtils::get_all_table_name(exec_tenant_id, table_name))) {
         LOG_WARN("fail to get all table name", K(ret), K(exec_tenant_id));
-      } else if (OB_FAIL(exec_insert(sql_client, tenant_id, table_id,
+      } else if (OB_FAIL(exec_insert(sql_client, tenant_id, table_id, // 执行 exec_insert
                                      table_name, dml, affected_rows))) {
         LOG_WARN("exec insert failed", K(ret));
       } else if (!is_single_row(affected_rows) && !is_zero_row(affected_rows)) {
