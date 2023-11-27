@@ -264,7 +264,7 @@ int ObPreBootstrap::prepare_bootstrap(ObAddr &master_rs)
     LOG_WARN("fail to notify sys tenant server unit resource", KR(ret));
   } else if (OB_FAIL(notify_sys_tenant_config_())) {
     LOG_WARN("fail to notify sys tenant config", KR(ret));
-  } else if (OB_FAIL(create_ls())) {
+  } else if (OB_FAIL(create_ls())) {  // 创建日志流
     LOG_WARN("failed to create core table partition", KR(ret));
   } else if (OB_FAIL(wait_elect_ls(master_rs))) {
     LOG_WARN("failed to wait elect master partition", KR(ret));
@@ -423,8 +423,9 @@ int ObPreBootstrap::wait_elect_ls(
 
   if (OB_FAIL(check_inner_stat())) {
     LOG_WARN("check_inner_stat failed", K(ret));
-  } else if (OB_FAIL(ls_leader_waiter_.wait(
-      tenant_id, SYS_LS, timeout, master_rs))) {
+  }
+  ret = ls_leader_waiter_.wait(tenant_id, SYS_LS, timeout, master_rs);
+  if (OB_FAIL(ret)) {
     LOG_WARN("leader_waiter_ wait failed", K(tenant_id), K(SYS_LS), K(timeout), K(ret));
   }
   if (OB_SUCC(ret)) {
@@ -588,7 +589,7 @@ int ObBootstrap::execute_bootstrap(rootserver::ObServerZoneOpService &server_zon
   if (OB_SUCC(ret)) {
     if (OB_FAIL(init_system_data())) {
       LOG_WARN("failed to init system data", KR(ret));
-    } else if (OB_FAIL(ddl_service_.refresh_schema(OB_SYS_TENANT_ID))) {
+    } else if (OB_FAIL(ddl_service_.refresh_schema(OB_SYS_TENANT_ID, NULL, &table_schemas))) {
       LOG_WARN("failed to refresh_schema", K(ret));
     }
   }
@@ -1055,6 +1056,7 @@ int ObBootstrap::batch_create_schema(ObDDLService &ddl_service,
         bool need_sync_schema_version = !(ObSysTableChecker::is_sys_table_index_tid(table.get_table_id()) ||
                                           is_sys_lob_table(table.get_table_id()));
         int64_t start_time = ObTimeUtility::current_time();
+
         if (OB_FAIL(ddl_operator.create_table(table, trans, ddl_stmt,
                                               need_sync_schema_version,
                                               is_truncate_table))) {

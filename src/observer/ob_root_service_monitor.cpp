@@ -151,6 +151,8 @@ int ObRootServiceMonitor::monitor_root_service()
             LOG_ERROR("bug here. root service can not start service");
           } else {
             DEBUG_SYNC(BEFORE_START_RS);
+            // 尝试启动root_service
+            // 确认自己是唯一的Leader之后 启动ObRootService
             if (OB_FAIL(try_start_root_service())) {
               FLOG_WARN("fail to start root_service", KR(ret));
             }

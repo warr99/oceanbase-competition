@@ -46,14 +46,14 @@ private:
   void advance_ballot_number_and_reset_related_states_(const int64_t new_ballot_number, const LogPhase phase);
 private:
   int64_t ballot_number_;// 选举的轮次
-  int64_t ballot_of_time_window_;// 已经prepare响应成功的轮次
+  int64_t ballot_of_time_window_;// 时间窗口开启时的选举轮次
   Lease lease_;// 租约
   ElectionPrepareRequestMsg highest_priority_prepare_req_;// 缓存的最高优先级的prepare请求
   ObStringHolder vote_reason_;
   bool is_time_window_opened_;// 时间窗口的打开状态
   ElectionImpl * const p_election_;// 指向election的指针
   common::ObOccamTimerTaskRAIIHandle time_window_task_handle_;// 用于在时间窗口关闭时投票
-  int64_t last_time_window_open_ts_;// 添加该状态的理由与proposer.last_do_prepare_ts_相同
+  int64_t last_time_window_open_ts_;// 时间窗口开启时的时间戳
   int64_t last_dump_acceptor_info_ts_;
 };
 
