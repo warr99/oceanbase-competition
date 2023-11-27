@@ -979,7 +979,7 @@ int ObBootstrap::parallel_create_table_schema(ObDDLService &ddl_service, ObIArra
 {
   int ret = OB_SUCCESS;
   int64_t begin = 0;
-  int64_t batch_count = (table_schemas.count() + 15) / 16;
+  int64_t batch_count = (table_schemas.count() + 12) / 13;
   const int64_t MAX_RETRY_TIMES = 10;
   int64_t finish_cnt = 0;
   std::vector<std::thread> ths;
