@@ -853,6 +853,7 @@ int ObHeartbeatService::check_if_hb_response_can_be_processed_(
   }
   return ret;
 }
+// 根据心跳响应中的服务器健康状态，检查是否需要启动或停止服务器，并记录相关的日志和事件。
 int ObHeartbeatService::check_and_execute_start_or_stop_server_(
     const ObHBResponse &hb_response,
     const ObServerHBInfo &server_hb_info,
@@ -867,6 +868,7 @@ int ObHeartbeatService::check_and_execute_start_or_stop_server_(
   } else if (OB_ISNULL(sql_proxy_)) {
     ret = OB_ERR_UNEXPECTED;
     HBS_LOG_ERROR("sql_proxy_ is null", KR(ret), KP(sql_proxy_));
+  // 检查心跳响应、服务器信息和服务器地址的有效性
   } else if (OB_UNLIKELY(!hb_response.is_valid()
       || !server_info_in_table.is_valid()
       || hb_response.get_server() != server_info_in_table.get_server()
@@ -880,11 +882,14 @@ int ObHeartbeatService::check_and_execute_start_or_stop_server_(
     bool is_start = false;
     int64_t affected_rows = 0;
     ObSqlString sql;
+    // 检查当前服务器的健康状态与之前的心跳信息进行对比，判断是否需要启动或停止服务器
     if (server_hb_info.get_server_health_status() != hb_response.get_server_health_status()) {
+      // 服务器不健康，且还没有停止-> 停止服务器
       if (0 == server_info_in_table.get_stop_time() && !health_status.is_healthy()) {
         is_start = false;
         need_start_or_stop_server = true;
       }
+      // 服务器健康，且被停止了 -> 开启服务器
       if (0 != server_info_in_table.get_stop_time() && health_status.is_healthy()) {
         is_start = true;
         need_start_or_stop_server = true;
@@ -1022,6 +1027,7 @@ int ObHeartbeatService::update_table_for_server_with_hb_response_(
   } else {
     const ObAddr &server = server_info_in_table.get_server();
     // *********  check with_rootserver ********* //
+    // 检查是否为 RootServer，如果不是但地址匹配，则更新为 RootServer
     if (OB_SUCC(ret)
         && !server_info_in_table.get_with_rootserver() && server == GCTX.self_addr()) {
       if (OB_FAIL(ObServerTableOperator::update_with_rootserver(trans, server))) {
@@ -1061,6 +1067,9 @@ int ObHeartbeatService::update_table_for_server_with_hb_response_(
     }
     // *********  check start_service_time ********* //
     if (OB_SUCC(ret) && server_info_in_table.get_start_service_time() != hb_response.get_start_service_time()) {
+      LOG_INFO("start_service_time is changed",
+               "old start service time", server_info_in_table.get_start_service_time(),
+               "new start service time", hb_response.get_start_service_time());
       if (OB_FAIL(ObServerTableOperator::update_start_service_time(
           trans,
           server,
