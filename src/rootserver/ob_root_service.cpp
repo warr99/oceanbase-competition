@@ -2746,6 +2746,11 @@ int ObRootService::create_tenant_end(const ObCreateTenantEndArg &arg)
   } else {
     LOG_INFO("success to create tenant end", K(ret), K(arg));
   }
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(ddl_service_.publish_schema(OB_SYS_TENANT_ID))) {
+      LOG_WARN("publish schema failed", K(ret));
+    }
+  }
   return ret;
 }
 

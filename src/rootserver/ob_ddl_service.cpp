@@ -22041,7 +22041,11 @@ int ObDDLService::create_tenant(
   } else if (OB_FAIL(create_tenant_end(user_tenant_id))) {
     LOG_WARN("failed to create tenant end", KR(ret), K(user_tenant_id));
   }
-
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(publish_schema(OB_SYS_TENANT_ID))) {
+      LOG_WARN("publish schema failed", K(ret));
+    }
+  }
   if (OB_SUCC(ret)) {
     tenant_id = user_tenant_id;
   }
@@ -23480,11 +23484,6 @@ int ObDDLService::create_tenant_end(const uint64_t tenant_id)
       if (OB_SUCCESS != (temp_ret = tenant_trans.end(is_commit))) {
         ret = (OB_SUCC(ret)) ? temp_ret : ret;
         LOG_WARN("trans end failed",  KR(ret), KR(temp_ret), K(is_commit));
-      }
-    }
-    if (OB_SUCC(ret)) {
-      if (OB_SUCCESS != (temp_ret = publish_schema(OB_SYS_TENANT_ID))) {
-        LOG_WARN("publish schema failed", K(temp_ret));
       }
     }
   }
