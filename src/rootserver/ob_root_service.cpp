@@ -1858,8 +1858,8 @@ int ObRootService::after_restart()
   ObCurTraceId::init(GCONF.self_addr_);
 
   // avoid concurrent with bootstrap
-  FLOG_INFO("[ROOTSERVICE_NOTICE] try to get lock for bootstrap in after_restart");
-  ObLatchRGuard guard(bootstrap_lock_, ObLatchIds::RS_BOOTSTRAP_LOCK);
+  // FLOG_INFO("[ROOTSERVICE_NOTICE] try to get lock for bootstrap in after_restart");
+  // ObLatchRGuard guard(bootstrap_lock_, ObLatchIds::RS_BOOTSTRAP_LOCK);
 
   // NOTE: Following log print after lock
   FLOG_INFO("[ROOTSERVICE_NOTICE] start to do restart task");
@@ -5556,7 +5556,7 @@ int ObRootService::ObRefreshServerTask::process()
   const bool load_frozen_status = true;
   const bool need_retry = true;
   FLOG_INFO("refresh server task process");
-  ObLatchRGuard guard(root_service_.bootstrap_lock_, ObLatchIds::RS_BOOTSTRAP_LOCK);
+  // ObLatchRGuard guard(root_service_.bootstrap_lock_, ObLatchIds::RS_BOOTSTRAP_LOCK);
   if (OB_FAIL(root_service_.refresh_server(load_frozen_status, need_retry))) {
     FLOG_WARN("refresh server failed", K(ret), K(load_frozen_status));
   } else {}
