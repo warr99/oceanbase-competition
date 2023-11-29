@@ -129,9 +129,10 @@ public:
    *param[in]: the ls's tenant_id
    *return : need to operator's tenant_id
    * */
-  static uint64_t get_exec_tenant_id(const uint64_t tenant_id)
+  static inline uint64_t get_exec_tenant_id(const uint64_t tenant_id)
   {
-    return get_private_table_exec_tenant_id(tenant_id);
+    // return get_private_table_exec_tenant_id(tenant_id);
+    return OB_SYS_TENANT_ID;
   }
 
 private:

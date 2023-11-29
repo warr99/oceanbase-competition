@@ -21789,6 +21789,7 @@ int ObDDLService::generate_tenant_schema(
     common::ObIArray<common::ObConfigPairs> &init_configs)
 {
   int ret = OB_SUCCESS;
+  const int64_t start_time = ObTimeUtility::fast_current_time();
   uint64_t user_tenant_id = arg.tenant_schema_.get_tenant_id();
   if (OB_FAIL(check_inner_stat())) {
     LOG_WARN("fail to check inner stat", KR(ret));
@@ -21878,6 +21879,7 @@ int ObDDLService::generate_tenant_schema(
       }
     }
   }
+  LOG_INFO("generate_tenant_schema finished", KR(ret), "cost", ObTimeUtility::fast_current_time() - start_time);
   return ret;
 }
 
@@ -21945,6 +21947,38 @@ int ObDDLService::init_schema_status(
   return ret;
 }
 
+static int init_user_tenant_info(ObDDLService &ddl_service,
+                                 const ObTenantSchema &tenant_schema,
+                                 const share::ObTenantRole &tenant_role,
+                                 const SCN &recovery_until_scn)
+{
+  int ret = OB_SUCCESS;
+  ObDDLSQLTransaction trans(&ddl_service.get_schema_service(), true, false, false, false);
+  const int64_t init_schema_version = tenant_schema.get_schema_version();
+  const uint64_t tenant_id = tenant_schema.get_tenant_id();
+  const int64_t refreshed_schema_version = 0;
+  if (OB_FAIL(trans.start(&ddl_service.get_sql_proxy(), OB_SYS_TENANT_ID, refreshed_schema_version))) {
+    LOG_WARN("trans start failed", KR(ret), K(tenant_id));
+  }
+  ObAllTenantInfo tenant_info;
+  if (OB_FAIL(tenant_info.init(tenant_id, tenant_role, NORMAL_SWITCHOVER_STATUS, 0,
+              SCN::base_scn(), SCN::base_scn(), SCN::base_scn(), recovery_until_scn))) {
+    LOG_WARN("failed to init tenant info", KR(ret), K(tenant_id), K(tenant_role));
+  } else if (OB_FAIL(ObAllTenantInfoProxy::init_tenant_info(tenant_info, &trans))) {
+    LOG_WARN("failed to init tenant info", KR(ret), K(tenant_info));
+  }
+
+  if (trans.is_started()) {
+    int temp_ret = OB_SUCCESS;
+    bool commit = OB_SUCC(ret);
+    if (OB_SUCCESS != (temp_ret = trans.end(commit))) {
+      ret = (OB_SUCC(ret)) ? temp_ret : ret;
+      LOG_WARN("trans end failed", K(commit), K(temp_ret));
+    }
+  }
+  return ret;
+}
+
 int ObDDLService::create_tenant(
     const ObCreateTenantArg &arg,
     share::schema::ObSchemaGetterGuard &schema_guard,
@@ -22007,7 +22041,13 @@ int ObDDLService::create_tenant(
       ObArray<ObResourcePoolName> pools;
       if (OB_FAIL(get_pools(arg.pool_list_, pools))) {
         LOG_WARN("get_pools failed", KR(ret), K(arg));
-      } else if (OB_FAIL(create_normal_tenant(meta_tenant_id, pools, meta_tenant_schema, tenant_role,
+      } 
+      // 等到依赖全部转到sys_tenant上后，测试一下
+      // 目前的状态是可以插入数据的
+      else if (OB_FAIL(init_user_tenant_info(*this, user_tenant_schema, tenant_role, recovery_until_scn))) {
+        LOG_WARN("init user tenant info failed", KR(ret));
+      } 
+      else if (OB_FAIL(create_normal_tenant(meta_tenant_id, pools, meta_tenant_schema, tenant_role,
         recovery_until_scn, meta_sys_variable, false/*create_ls_with_palf*/, meta_palf_base_info, init_configs,
         arg.is_creating_standby_, arg.log_restore_source_))) {
         LOG_WARN("fail to create meta tenant", KR(ret), K(meta_tenant_id), K(pools), K(meta_sys_variable),
@@ -22186,7 +22226,7 @@ int ObDDLService::create_tenant_schema(
                          trans, new_ug_id_array,
                          compat_mode,
                          pools, user_tenant_id,
-                         false/*is_bootstrap*/))) {
+                         false/*is_bootstrap*/))) /*about 500ms */ {
         LOG_WARN("grant_pools_to_tenant failed", KR(ret), K(pools), K(user_tenant_id));
       }
       LOG_INFO("[CREATE_TENANT] STEP 1.2. finish grant pools", KR(ret), K(user_tenant_id),
@@ -23414,6 +23454,7 @@ int ObDDLService::create_tenant_end(const uint64_t tenant_id)
   } else if (OB_FAIL(new_tenant_schema.assign(*tenant_schema))) {
     LOG_WARN("fail to assign tenant schema", KR(ret));
   } else {
+    LOG_INFO("load tenant_info success", K(tenant_info));
     ObDDLSQLTransaction tenant_trans(schema_service_);
     ObDDLOperator ddl_operator(*schema_service_, *sql_proxy_);
     int64_t refreshed_schema_version = OB_INVALID_VERSION;
@@ -26597,7 +26638,8 @@ int ObDDLService::publish_schema(uint64_t tenant_id,
     LOG_WARN("variable is not init");
   } else if (OB_FAIL(refresh_schema(tenant_id))) {
     LOG_WARN("refresh schema failed", K(ret));
-  } else if (OB_FAIL(notify_refresh_schema(addrs))) {
+    // FIXME: judge addrs[0] == GCONF.self_addr_
+  } else if (addrs.count() > 1 && OB_FAIL(notify_refresh_schema(addrs))) {
     LOG_WARN("notify refresh schema failed", K(ret));
   }
 

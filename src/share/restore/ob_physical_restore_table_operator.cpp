@@ -107,8 +107,11 @@ int ObPhysicalRestoreTableOperator::init(common::ObISQLClient *sql_client,
 
 int ObPhysicalRestoreTableOperator::insert_job(const ObPhysicalRestoreJob &job_info)
 {
+  return insert_job(job_info, get_exec_tenant_id(tenant_id_));
+}
+
+int ObPhysicalRestoreTableOperator::insert_job(const ObPhysicalRestoreJob &job_info, uint64_t exec_tenant_id) {
   int ret = OB_SUCCESS;
-  const uint64_t exec_tenant_id = get_exec_tenant_id(tenant_id_);
   if (OB_UNLIKELY(!inited_)) {
     ret = OB_NOT_INIT;
     LOG_WARN("physical restore table operator not init", KR(ret));

@@ -29,8 +29,7 @@ int ObLSLifeAgentManager::create_new_ls(
     const common::ObString &zone_priority, const share::ObTenantSwitchoverStatus &working_sw_status)
 {
   int ret = OB_SUCCESS;
-  ObMySQLTransaction trans; 
-  const uint64_t exec_tenant_id = ObLSLifeIAgent::get_exec_tenant_id(ls_info.tenant_id_);
+  const uint64_t exec_tenant_id = /*ObLSLifeIAgent::get_exec_tenant_id(ls_info.tenant_id_);*/ OB_SYS_TENANT_ID;
   if (OB_UNLIKELY(!ls_info.is_valid() || !create_ls_scn.is_valid() || zone_priority.empty())) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("invalid argument", KR(ret), K(ls_info), K(create_ls_scn), K(zone_priority));
