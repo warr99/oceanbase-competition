@@ -74,6 +74,7 @@ void ObPrimaryLSService::do_work()
     int tmp_ret = OB_SUCCESS;
     share::schema::ObTenantSchema tenant_schema;
     while (!has_set_stop()) {
+      int64_t start_time = fast_current_time();
       tenant_schema.reset();
       ObCurTraceId::init(GCONF.self_addr_);
       DEBUG_SYNC(STOP_PRIMARY_LS_THREAD);
@@ -92,7 +93,7 @@ void ObPrimaryLSService::do_work()
         }
       }
 
-      LOG_INFO("[PRIMARY_LS_SERVICE] finish one round", KR(ret), K(tenant_schema));
+      LOG_INFO("[PRIMARY_LS_SERVICE] finish one round", KR(ret), K(tenant_schema), "cost", fast_current_time() - start_time);
       tenant_schema.reset();
       idle(idle_time_us);
     }// end while
@@ -249,7 +250,7 @@ int ObPrimaryLSService::try_set_next_ls_status_(
       if (OB_UNLIKELY(!machine.is_valid())) {
         ret = OB_INVALID_ARGUMENT;
         LOG_WARN("machine is invalid", KR(ret), K(machine));
-      } else if (!ls_info.is_valid()) {
+      } else if (OB_UNLIKELY(!ls_info.is_valid())) {
         if (status_info.ls_is_wait_offline()) {
         } else if (status_info.ls_is_create_abort()
             || status_info.ls_is_creating()
@@ -273,6 +274,7 @@ int ObPrimaryLSService::try_set_next_ls_status_(
                   machine.ls_id_, ls_info.get_ls_status(), share::OB_LS_NORMAL, working_sw_status))) {
             LOG_WARN("failed to update ls status", KR(ret), K(machine));
           }
+          LOG_INFO("update ls from ", ls_status_to_str(ls_info.get_ls_status()), " to NORMAL");
         } else if (status_info.ls_is_creating()) {
         } else {
           ret = OB_ERR_UNEXPECTED;
@@ -471,6 +473,7 @@ int ObPrimaryLSService::process_all_ls_status_to_steady_(const share::schema::Ob
 int ObPrimaryLSService::create_ls_for_create_tenant()
 {
   int ret = OB_SUCCESS;
+  const int64_t start_time = ObTimeUtility::fast_current_time();
   share::schema::ObTenantSchema tenant_schema;
   ObArray<ObZone> primary_zone;
   ObArray<share::ObSimpleUnitGroup> unit_group_array;
@@ -487,14 +490,15 @@ int ObPrimaryLSService::create_ls_for_create_tenant()
     // ensure __all_ls is emptry
     START_TRANSACTION(GCTX.sql_proxy_, tenant_id_)
     ObArray<share::ObLSAttr> ls_array;
-    share::ObLSAttr sys_ls;
+    /*share::ObLSAttr sys_ls;
     if (FAILEDx(ls_operator.get_ls_attr(SYS_LS, true, trans, sys_ls))) {
       LOG_WARN("failed to get SYS_LS attr", KR(ret));
-    } else if (OB_FAIL(ls_operator.get_all_ls_by_order(ls_array))) {
+    } else */if (OB_FAIL(ls_operator.get_all_ls_by_order(ls_array))) {
       LOG_WARN("failed to get all_ls by order", KR(ret));
     } else if (ls_array.count() > 1) {
       //nothing
     } else {
+      // LOG_INFO("get ls attr finished", K(sys_ls));
       uint64_t ls_group_id = OB_INVALID_ID;
       ObLSID ls_id;
       share::ObLSAttr new_ls;
@@ -515,6 +519,7 @@ int ObPrimaryLSService::create_ls_for_create_tenant()
                            share::OB_LS_OP_CREATE_PRE, create_scn))) {
               LOG_WARN("failed to init new operation", KR(ret), K(create_scn),
                        K(ls_id), K(ls_group_id));
+              // just insert OB_ALL_LS_TNAME not insert OB_ALL_LS_STATUS_TNAME
             } else if (OB_FAIL(ls_operator.insert_ls(
                            new_ls, share::NORMAL_SWITCHOVER_STATUS, &trans))) {
               LOG_WARN("failed to insert new operation", KR(ret), K(new_ls));
@@ -524,6 +529,8 @@ int ObPrimaryLSService::create_ls_for_create_tenant()
       }//end for each unit group
     }
     END_TRANSACTION(trans)
+    LOG_INFO("[CREATE USER LS] create user ls finished", KR(ret), 
+                "cost", ObTimeUtility::fast_current_time() - start_time);
   }
   return ret;
 }

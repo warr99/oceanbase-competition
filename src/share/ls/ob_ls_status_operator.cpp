@@ -224,7 +224,7 @@ int ObLSStatusOperator::create_new_ls(const ObLSStatusInfo &ls_info,
     ObDMLSqlSplicer dml_splicer;
     if (OB_FAIL(dml_splicer.add_pk_column("tenant_id", ls_info.tenant_id_))
       || OB_FAIL(dml_splicer.add_pk_column("ls_id", ls_info.ls_id_.id()))
-      || OB_FAIL(dml_splicer.add_column("status", ls_status_to_str(ls_info.status_)))
+      || OB_FAIL(dml_splicer.add_column("status", ls_status_to_str(ls_info.status_))) // createing
       || OB_FAIL(dml_splicer.add_column("ls_group_id", ls_info.ls_group_id_))
       || OB_FAIL(dml_splicer.add_column("unit_group_id", ls_info.unit_group_id_))
       || OB_FAIL(dml_splicer.add_column("primary_zone", ls_info.primary_zone_.ptr()))) {

@@ -340,11 +340,6 @@ int ObAllTenantInfoProxy::load_tenant_info(const uint64_t tenant_id,
   return ret;
 }
 
-/*
-  // 让这段代码在create_tenant的时候代替load_tenant中加载user_tenant。在这之前先打日志，看看是不是一样的
-  tenant_info.init(user_tenant_id, tenant_role, NORMAL_SWITCHOVER_STATUS, 0,
-                SCN::base_scn(), SCN::base_scn(), SCN::base_scn(), recovery_until_scn)
-*/
 int ObAllTenantInfoProxy::load_tenant_info(const uint64_t tenant_id,
                                            ObISQLClient *proxy,
                                            const bool for_update,

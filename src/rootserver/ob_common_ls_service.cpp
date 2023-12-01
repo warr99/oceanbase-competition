@@ -64,6 +64,7 @@ void ObCommonLSService::destroy()
 void ObCommonLSService::do_work()
 {
   int ret = OB_SUCCESS;
+  LOG_INFO("obCommonLSService do work", K(tenant_id_));
   if (OB_UNLIKELY(!inited_)) {
     ret = OB_NOT_INIT;
     LOG_WARN("not init", K(ret));
@@ -74,6 +75,7 @@ void ObCommonLSService::do_work()
     LOG_WARN("failed to wait tenant schema version ready", KR(ret), K(tenant_id_), K(DATA_CURRENT_VERSION));
   } else {
     int64_t idle_time_us = 1000 * 1000L;//1s
+    const int64_t start_time = ObTimeUtility::current_time();
     share::schema::ObTenantSchema user_tenant_schema;
     int tmp_ret = OB_SUCCESS;
     while (!has_set_stop()) {
@@ -89,6 +91,9 @@ void ObCommonLSService::do_work()
           if (OB_TMP_FAIL(try_force_drop_tenant_(user_tenant_schema))) {
             LOG_WARN("failed to force drop tenant", KR(ret), KR(tmp_ret), K(user_tenant_id));
           }
+          // 似乎是用来使得其他节点也收到创建ls的命令
+          // 并且在创建完成后，让这些节点都把ls_status设置为CREATED
+          // 最后把sys_ls的status设置为NORMAL
         } else if (OB_TMP_FAIL(try_create_ls_(user_tenant_schema))) {
           LOG_WARN("failed to create ls", KR(ret), KR(tmp_ret), K(user_tenant_schema));
         }
@@ -107,7 +112,7 @@ void ObCommonLSService::do_work()
       }
 
       user_tenant_schema.reset();
-      LOG_INFO("[COMMON_LS_SERVICE] finish one round", KR(ret), KR(tmp_ret), K(idle_time_us));
+      LOG_INFO("[COMMON_LS_SERVICE] finish one round", KR(ret), KR(tmp_ret), K(tenant_id_), K(idle_time_us), "cost", ObTimeUtility::current_time() - start_time);
       idle(idle_time_us);
     }  // end while
   }
@@ -135,6 +140,7 @@ int ObCommonLSService::try_create_ls_(const share::schema::ObTenantSchema &tenan
             tenant_id, status_info_array, *GCTX.sql_proxy_))) {
       LOG_WARN("failed to get all ls status", KR(ret), K(tenant_id));
     }
+    LOG_INFO("get all ls status by order finished", "count", status_info_array.count());
     for (int64_t i = 0; OB_SUCC(ret) && i < status_info_array.count(); ++i) {
       const ObLSStatusInfo &status_info = status_info_array.at(i);
       if (status_info.ls_is_creating()) {

@@ -11,6 +11,7 @@
  */
 
 #define USING_LOG_PREFIX RS
+#include "ob_common_ls_service.h"
 #include "rootserver/ob_ddl_service.h"
 
 #include "lib/oblog/ob_log.h"
@@ -22033,7 +22034,7 @@ int ObDDLService::create_tenant(
       LOG_WARN("fail to init schema status", KR(ret), K(user_tenant_id));
     } else if (OB_FAIL(create_tenant_schema(
                arg, schema_guard, user_tenant_schema,
-               meta_tenant_schema, init_configs))) {
+               meta_tenant_schema, init_configs))) {    // 包含创建用户的逻辑
       LOG_WARN("fail to create tenant schema", KR(ret), K(arg));
     } else {
       DEBUG_SYNC(BEFORE_CREATE_META_TENANT);
@@ -22042,11 +22043,13 @@ int ObDDLService::create_tenant(
       if (OB_FAIL(get_pools(arg.pool_list_, pools))) {
         LOG_WARN("get_pools failed", KR(ret), K(arg));
       } 
-      // 等到依赖全部转到sys_tenant上后，测试一下
-      // 目前的状态是可以插入数据的
+      // 插入user租户的tenant_info
       else if (OB_FAIL(init_user_tenant_info(*this, user_tenant_schema, tenant_role, recovery_until_scn))) {
         LOG_WARN("init user tenant info failed", KR(ret));
       } 
+      // 测试一下user能否在meta创建之前创建，如果能，则依赖已经完全转移到sys_tenant，可以并发创建
+      // 顺便找一下user是在哪里依赖ObCommonLSService，目前找不到meta租户在哪里开启ObCommonLSService
+      // 也不知道ObCommonLSService应该如何转移到sys_tenant
       else if (OB_FAIL(create_normal_tenant(meta_tenant_id, pools, meta_tenant_schema, tenant_role,
         recovery_until_scn, meta_sys_variable, false/*create_ls_with_palf*/, meta_palf_base_info, init_configs,
         arg.is_creating_standby_, arg.log_restore_source_))) {
@@ -22736,6 +22739,39 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
       ret = OB_TIMEOUT;
       LOG_WARN("create user ls timeout", KR(ret));
     }
+    if (OB_SUCC(ret) && !ctx.is_timeouted()) {
+      share::ObLSStatusInfoArray status_info_array;
+      share::ObLSStatusOperator ls_op;
+      ObLSRecoveryStat recovery_stat;
+      ObLSRecoveryStatOperator ls_recovery_operator;
+      palf::PalfBaseInfo palf_base_info;
+      int tmp_ret = OB_SUCCESS;
+      ObTenantSchema tenant_schema;
+      if (OB_FAIL(ObTenantThreadHelper::get_tenant_schema(tenant_id, tenant_schema))) {
+        LOG_WARN("failed to get user tenant schema", KR(ret), K(tenant_id));
+      } else if (OB_FAIL(ls_op.get_all_ls_status_by_order(
+              tenant_id, status_info_array, *GCTX.sql_proxy_))) {
+        LOG_WARN("failed to get all ls status", KR(ret), K(tenant_id));
+      }
+      LOG_INFO("get all ls status by order finished", "count", status_info_array.count());
+      for (int64_t i = 0; OB_SUCC(ret) && i < status_info_array.count(); ++i) {
+        const ObLSStatusInfo &status_info = status_info_array.at(i);
+        if (status_info.ls_is_creating()) {
+          recovery_stat.reset();
+          if (OB_FAIL(ls_recovery_operator.get_ls_recovery_stat(
+                    tenant_id, status_info.ls_id_, false /*for_update*/,
+                    recovery_stat, *GCTX.sql_proxy_))) {
+            LOG_WARN("failed to get ls recovery stat", KR(ret), K(tenant_id),
+                       K(status_info));
+          } else if (OB_FAIL(ObCommonLSService::do_create_user_ls(tenant_schema, status_info,
+                                               recovery_stat.get_create_scn(),
+                                               false, palf_base_info))) {
+            LOG_WARN("failed to create new ls", KR(ret), K(status_info),
+                       K(recovery_stat));
+          }
+        }
+      }  // end for
+    }
   }
   LOG_INFO("[CREATE_TENANT] STEP 2.5. finish create user log stream", KR(ret), K(tenant_id),
            "cost", ObTimeUtility::fast_current_time() - start_time);
@@ -23094,6 +23130,7 @@ int ObDDLService::init_tenant_schema(
       }
 
       common::ObMySQLTransaction trans;
+      const int64_t write_upgrade_barrier_log_start_time = ObTimeUtility::fast_current_time();
       if (OB_FAIL(ret)) {
       } else if (OB_FAIL(trans.start(sql_proxy_, tenant_id))) {
         LOG_WARN("failed to start trans", KR(ret), K(tenant_id));
@@ -23121,6 +23158,7 @@ int ObDDLService::init_tenant_schema(
           ret = OB_SUCC(ret) ? tmp_ret : ret;
         }
       }
+      LOG_INFO("write upgrade barrier log finished", KR(ret), "cost", ObTimeUtility::fast_current_time() - write_upgrade_barrier_log_start_time);
     }
 
     // 2. init tenant schema
@@ -23503,6 +23541,7 @@ int ObDDLService::create_tenant_end(const uint64_t tenant_id)
       }
 
       if (OB_FAIL(ret)) {
+        // update tenant status from CREATING to NORMAL
       } else if (OB_FAIL(ddl_operator.create_tenant(new_tenant_schema, OB_DDL_ADD_TENANT_END, trans, ddl_stmt_str_ptr))) {
         LOG_WARN("create tenant failed", K(new_tenant_schema), K(ret));
       } else {/*do nothing*/}
