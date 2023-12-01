@@ -22728,10 +22728,14 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
       const int64_t timeout = ctx.get_timeout();
       if (OB_TMP_FAIL(GCTX.location_service_->get_leader(GCONF.cluster_id, tenant_id, SYS_LS, FALSE, leader))) {
         LOG_WARN("failed to get leader", KR(ret), KR(tmp_ret), K(tenant_id));
-      } else if (OB_TMP_FAIL(rpc_proxy_->to(leader).timeout(timeout)
+      }
+      const int64_t rpc_start_time = ObTimeUtility::fast_current_time();
+      if (OB_TMP_FAIL(rpc_proxy_->to(leader).timeout(timeout)
             .notify_create_tenant_user_ls(tenant_id))) {
         LOG_WARN("failed to create tenant user ls", KR(ret), KR(tmp_ret), K(tenant_id), K(leader), K(timeout));
       } else {
+        LOG_INFO("notify create tenant user ls rpc finished", 
+                "cost", ObTimeUtility::fast_current_time() - rpc_start_time);
         break;
       }
     }
@@ -22739,7 +22743,8 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
       ret = OB_TIMEOUT;
       LOG_WARN("create user ls timeout", KR(ret));
     }
-    if (OB_SUCC(ret) && !ctx.is_timeouted()) {
+    /*if (OB_SUCC(ret) && !ctx.is_timeouted()) {
+      LOG_INFO("start to change ls status");
       share::ObLSStatusInfoArray status_info_array;
       share::ObLSStatusOperator ls_op;
       ObLSRecoveryStat recovery_stat;
@@ -22759,7 +22764,7 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
         if (status_info.ls_is_creating()) {
           recovery_stat.reset();
           if (OB_FAIL(ls_recovery_operator.get_ls_recovery_stat(
-                    tenant_id, status_info.ls_id_, false /*for_update*/,
+                    tenant_id, status_info.ls_id_, false,
                     recovery_stat, *GCTX.sql_proxy_))) {
             LOG_WARN("failed to get ls recovery stat", KR(ret), K(tenant_id),
                        K(status_info));
@@ -22771,7 +22776,7 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
           }
         }
       }  // end for
-    }
+    }*/
   }
   LOG_INFO("[CREATE_TENANT] STEP 2.5. finish create user log stream", KR(ret), K(tenant_id),
            "cost", ObTimeUtility::fast_current_time() - start_time);

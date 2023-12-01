@@ -363,12 +363,12 @@ int ObLSCreator::process_after_has_member_list_(
                   tenant_id_, id_, share::OB_LS_CREATING, share::OB_LS_NORMAL,
                   share::NORMAL_SWITCHOVER_STATUS, *proxy_))) {
       LOG_WARN("failed to update ls status", KR(ret), K(id_));
-    } else if (!id_.is_sys_ls() && /*OB_FAIL(ls_operator.update_ls_status(
+    } else if (!id_.is_sys_ls() && OB_FAIL(ls_operator.update_ls_status(
             tenant_id_, id_, share::OB_LS_CREATING, share::OB_LS_CREATED,
-            share::NORMAL_SWITCHOVER_STATUS, *proxy_))*/
-            OB_FAIL(ls_operator.update_ls_status(
+            share::NORMAL_SWITCHOVER_STATUS, *proxy_))
+            /*OB_FAIL(ls_operator.update_ls_status(
                   tenant_id_, id_, share::OB_LS_CREATING, share::OB_LS_NORMAL,
-                  share::NORMAL_SWITCHOVER_STATUS, *proxy_))) {
+                  share::NORMAL_SWITCHOVER_STATUS, *proxy_))*/) {
       LOG_WARN("failed to update ls status", KR(ret), K(id_));        
     }
     /*
