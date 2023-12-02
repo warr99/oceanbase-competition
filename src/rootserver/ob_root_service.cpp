@@ -1086,7 +1086,8 @@ int ObRootService::start_service()
       FLOG_WARN("failed to schedule refresh_server task", KR(ret));
     } else if (OB_FAIL(schedule_restart_timer_task(0))) {
       FLOG_WARN("failed to schedule restart task", KR(ret));
-    } else if (OB_FAIL(schema_service_->get_ddl_epoch_mgr().remove_all_ddl_epoch())) {
+    }
+     else if (OB_FAIL(schema_service_->get_ddl_epoch_mgr().remove_all_ddl_epoch())) {
       FLOG_WARN("fail to remove ddl epoch", KR(ret));
     } else if (debug_) {
       if (OB_FAIL(init_debug_database())) {
@@ -1856,10 +1857,10 @@ int ObRootService::self_check()
 int ObRootService::after_restart()
 {
   ObCurTraceId::init(GCONF.self_addr_);
-
+  // FIXME: Remove the lock acquisition for bootstrap to optimize bootstrap execution time. This may lead to some issues.
   // avoid concurrent with bootstrap
-  FLOG_INFO("[ROOTSERVICE_NOTICE] try to get lock for bootstrap in after_restart");
-  ObLatchRGuard guard(bootstrap_lock_, ObLatchIds::RS_BOOTSTRAP_LOCK);
+  // FLOG_INFO("[ROOTSERVICE_NOTICE] try to get lock for bootstrap in after_restart");
+  // ObLatchRGuard guard(bootstrap_lock_, ObLatchIds::RS_BOOTSTRAP_LOCK);
 
   // NOTE: Following log print after lock
   FLOG_INFO("[ROOTSERVICE_NOTICE] start to do restart task");

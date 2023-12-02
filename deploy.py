@@ -8,7 +8,13 @@ import sys
 import shutil
 import logging
 import traceback
+import threading
 
+log_level = logging.INFO
+log_format = "%(asctime)s.%(msecs)03d [%(levelname)-5s] - %(message)s " \
+            "(%(name)s [%(funcName)s@%(filename)s:%(lineno)s] [%(threadName)s] P:%(process)d T:%(thread)d)"
+log_date_format = "%Y-%m-%d %H:%M:%S"
+logging.basicConfig(format=log_format, level=log_level, datefmt=log_date_format, stream=sys.stdout)
 _logger = logging.getLogger('DeployDemo')
 
 def param_check(args):
@@ -39,6 +45,20 @@ def __clear_env(cluster_home_path:str) -> None:
         path_to_clear = os.path.join(cluster_home_path, path)
         shutil.rmtree(path_to_clear, ignore_errors=True)
 
+def __gen_perf(cluster_home_path:str, sleep_time:int) -> None:
+    observer_bin_path = __observer_bin_path(cluster_home_path)
+    pid = subprocess.getoutput(f'pidof {observer_bin_path}')
+    if pid:
+        _logger.info('start to gen perf.data, pid=%s, sleep=%ds', pid, sleep_time)
+        # 定义一个新的函数来运行 subprocess.run
+        def run_perf_command():
+            subprocess.run(f'perf record -F 99 -p {pid} -g -o ./perf.data -- sleep {sleep_time}', shell=True)
+
+
+        # 创建一个线程并启动它
+        perf_thread = threading.Thread(target=run_perf_command)
+        perf_thread.start()
+
 def __try_to_connect(host, mysql_port:int, *, timeout_seconds=60):
     error_return = None
     for _ in range(0, timeout_seconds):
@@ -62,28 +82,44 @@ def __create_tenant(cursor, *,
     create_resource_pool_sql = f"CREATE RESOURCE POOL {resource_pool_name} unit='{unit_name}', unit_num=1,ZONE_LIST=('{zone_name}');"
     create_tenant_sql = f"CREATE TENANT IF NOT EXISTS {tenant_name} resource_pool_list = ('{resource_pool_name}') set ob_tcp_invited_nodes = '%';"
 
+    # unit create
+    _logger.info(f'execute unit create: {create_unit_sql}')   
+    unit_create_begin = datetime.datetime.now()       
     cursor.execute(create_unit_sql)
-    _logger.info(f'unit create done: {create_unit_sql}')
+    unit_create_end = datetime.datetime.now()       
+    _logger.info('unit create done %s ms' % ((unit_create_end - unit_create_begin).total_seconds() * 1000))
 
+    # resource pool create  
+    _logger.info(f'execute resource pool create: {create_resource_pool_sql}')   
+    resource_pool_create_begin = datetime.datetime.now()       
     cursor.execute(create_resource_pool_sql)
-    _logger.info(f'resource pool create done: {create_unit_sql}')
+    resource_pool_create_end = datetime.datetime.now()       
+    _logger.info('execute resource pool done %s ms' % ((resource_pool_create_end - resource_pool_create_begin).total_seconds() * 1000))
 
+    # tenant create
+    _logger.info(f'execute tenant create: {create_tenant_sql}')   
+    tenant_create_begin = datetime.datetime.now()   
+    if args.perf_create_tenant:
+        __gen_perf(home_abs_path, 24)
     cursor.execute(create_tenant_sql)
-    _logger.info(f'tenant create done: {create_unit_sql}')
+    tenant_create_end = datetime.datetime.now()       
+    _logger.info('execute tenant create done %s ms' % ((tenant_create_end - tenant_create_begin).total_seconds() * 1000))
 
 
 if __name__ == "__main__":
-    log_level = logging.INFO
-    log_format = "%(asctime)s.%(msecs)03d [%(levelname)-5s] - %(message)s " \
-                "(%(name)s [%(funcName)s@%(filename)s:%(lineno)s] [%(threadName)s] P:%(process)d T:%(thread)d)"
-    log_date_format = "%Y-%m-%d %H:%M:%S"
+    # log_level = logging.INFO
+    # log_format = "%(asctime)s.%(msecs)03d [%(levelname)-5s] - %(message)s " \
+    #             "(%(name)s [%(funcName)s@%(filename)s:%(lineno)s] [%(threadName)s] P:%(process)d T:%(thread)d)"
+    # log_date_format = "%Y-%m-%d %H:%M:%S"
 
-    logging.basicConfig(format=log_format, level=log_level, datefmt=log_date_format, stream=sys.stdout)
+    # logging.basicConfig(format=log_format, level=log_level, datefmt=log_date_format, stream=sys.stdout)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--cluster-home-path", dest='cluster_home_path', type=str, help="the path of sys log / config file / sql.sock / audit info")
     parser.add_argument("--only_build_env", action='store_true', help="build env & start observer without bootstrap and basic check")
     parser.add_argument('--clean', action='store_true', help='clean deploy directory and exit')
+    parser.add_argument('--perf_all', action='store_true', help='monitor the entire process and generate perf.data')
+    parser.add_argument('--perf_create_tenant', action='store_true', help='monitor the process of creating tenants and generate perf.data')
     parser.add_argument("-p", dest="mysql_port", type=str, default="2881")
     parser.add_argument("-P", dest="rpc_port", type=str, default="2882")
     parser.add_argument("-z", dest="zone", type=str, default="zone1")
@@ -124,11 +160,17 @@ if __name__ == "__main__":
     shell_result = subprocess.run(observer_cmd, shell=True)
     _logger.info('deploy done. returncode=%d', shell_result.returncode)
 
-    time.sleep(2)
+    if args.perf_all:
+        __gen_perf(home_abs_path, 42)
+
+    time.sleep(10)
     try:
         db = __try_to_connect(args.ip, int(args.mysql_port))
         cursor = db.cursor(cursor=mysql.cursors.DictCursor)
         _logger.info(f'connect to server success! host={args.ip}, port={args.mysql_port}')
+
+        if args.only_build_env:
+            exit(0)
 
         bootstrap_begin = datetime.datetime.now()
         cursor.execute(f"ALTER SYSTEM BOOTSTRAP ZONE '{args.zone}' SERVER '{rootservice}'")

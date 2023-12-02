@@ -2459,7 +2459,8 @@ int ObMultiVersionSchemaService::async_refresh_schema(
  * 4. If a tenant fails to update to the specified version, an error will be reported and the external logic will try again
  */
 int ObMultiVersionSchemaService::refresh_and_add_schema(const ObIArray<uint64_t> &tenant_ids,
-                                                        bool check_bootstrap/* = false*/)
+                                                        bool check_bootstrap/* = false*/, 
+                                                        ObSArray<ObTableSchema> *bootstrap_schemas/* = NULL*/)
 {
   FLOG_INFO("[REFRESH_SCHEMA] start to refresh and add schema", K(tenant_ids));
   const int64_t start = ObTimeUtility::current_time();
@@ -2515,7 +2516,7 @@ int ObMultiVersionSchemaService::refresh_and_add_schema(const ObIArray<uint64_t>
       } else if (0 == tenant_ids.count()) {
         // refresh all tenant schema
         ObSchemaMgr *schema_mgr = NULL;
-        if (OB_FAIL(refresh_tenant_schema(OB_SYS_TENANT_ID))) {
+        if (OB_FAIL(refresh_tenant_schema(OB_SYS_TENANT_ID, bootstrap_schemas))) {
           LOG_WARN("fail to refresh sys schema", K(ret), K(all_tenant_ids));
         } else if (OB_FAIL(schema_mgr_for_cache_map_.get_refactored(OB_SYS_TENANT_ID, schema_mgr))) {
           LOG_WARN("fail to get sys schema mgr for cache", K(ret));
@@ -2546,7 +2547,11 @@ int ObMultiVersionSchemaService::refresh_and_add_schema(const ObIArray<uint64_t>
         int tmp_ret = OB_SUCCESS;
         for (int64_t i = 0; i < tenant_ids.count(); i++) {
           const uint64_t tenant_id = tenant_ids.at(i);
-          if (OB_INVALID_TENANT_ID == tenant_id) {
+          if (OB_NOT_NULL(bootstrap_schemas) && OB_SYS_TENANT_ID == tenant_id) {
+            LOG_INFO("bootstrap refresh sys tenant schema");
+            tmp_ret = refresh_tenant_schema(tenant_id, bootstrap_schemas);
+            LOG_INFO("bootstrap refresh sys tenant schema finished");
+          } else if (OB_INVALID_TENANT_ID == tenant_id) {
             tmp_ret = OB_INVALID_ARGUMENT;
             LOG_WARN("invalid tenant_id", K(tmp_ret), K(tenant_id));
           } else if (OB_SUCCESS != (tmp_ret = refresh_tenant_schema(tenant_id))) {
@@ -2789,7 +2794,7 @@ int ObMultiVersionSchemaService::auto_switch_mode_and_refresh_schema(
 // 3. user tenants of the standalone cluster are weakly consistent in reading and refresh schema,
 //  and they need to obtain the weakly consistent read version number and the visible schema version
 int ObMultiVersionSchemaService::refresh_tenant_schema(
-    const uint64_t tenant_id)
+    const uint64_t tenant_id, ObSArray<ObTableSchema> *schema_bootstrap/* = NULL*/)
 {
   FLOG_INFO("[REFRESH_SCHEMA] start to refresh and add schema by tenant", K(tenant_id));
   const int64_t start = ObTimeUtility::current_time();
@@ -2871,7 +2876,7 @@ int ObMultiVersionSchemaService::refresh_tenant_schema(
       }
 
       if (OB_SUCC(ret) && need_refresh) {
-        if (OB_FAIL(refresh_schema(refresh_schema_status))) {
+        if (OB_FAIL(refresh_schema(refresh_schema_status, schema_bootstrap))) {
           LOG_WARN("fail to refresh schema by tenant", KR(ret), K(refresh_schema_status));
         }
       }

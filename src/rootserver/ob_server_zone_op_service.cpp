@@ -501,7 +501,7 @@ int ObServerZoneOpService::add_server_(
       ObServerStatus::OB_SERVER_ACTIVE,
       build_version,
       0, /* stop_time */
-      0, /* start_service_time */
+      ObTimeUtility::current_time(), /* start_service_time */
       0 /* last_offline_time */))) {
     LOG_WARN("fail to init server info in table", KR(ret), K(server), K(server_id), K(zone),
         K(sql_port), K(build_version), K(now));

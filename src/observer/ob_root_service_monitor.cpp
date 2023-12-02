@@ -151,6 +151,8 @@ int ObRootServiceMonitor::monitor_root_service()
             LOG_ERROR("bug here. root service can not start service");
           } else {
             DEBUG_SYNC(BEFORE_START_RS);
+            // 尝试启动root_service
+            // 确认自己是唯一的Leader之后 启动ObRootService
             if (OB_FAIL(try_start_root_service())) {
               FLOG_WARN("fail to start root_service", KR(ret));
             }
@@ -188,7 +190,18 @@ int ObRootServiceMonitor::monitor_root_service()
   }
   return ret;
 }
-
+/**
+  * 初始化: 检查ObRootServiceMonitor对象和相关的管理器是否已经初始化，以及获取RPC代理的有效性。
+  * 构造初始根服务列表: 通过rs_mgr_.construct_initial_server_list函数构造初始的根服务地址列表。
+  * 循环检查其他根服务节点的状态:
+    * 对于每个根服务节点，使用ObGetRootserverRoleProxy RPC代理发送请求，获取其角色和状态信息。
+    * 如果发现任何一个根服务节点的角色是Leader，表示有新的Leader可能当选，返回OB_NOT_MASTER。
+    * 如果发现任何一个根服务节点的状态不是status::INIT，表示可能存在旧的根服务节点未停止，需要等待。
+  * 等待RPC结果: 等待所有RPC请求的结果，检查发送的RPC计数是否与返回的RPC计数匹配。
+  * 启动根服务: 如果没有出现问题（OB_FAIL(ret)为假），并且没有设置停止标志，那么根据root_service_.start_service启动根服务。
+  * 等待一段时间: 如果在上述过程中发现需要等待，且未设置停止标志，就会通过ob_usleep等待一段时间（2倍的监控根服务的时间间隔）。
+  * 记录日志: 记录函数执行结束的日志。
+*/
 int ObRootServiceMonitor::try_start_root_service()
 {
   int ret = OB_SUCCESS;
