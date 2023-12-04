@@ -171,6 +171,7 @@ int ObLSLeaderElectionWaiter::wait_elect_leader(
   } else {
     int64_t sleep_interval = std::max(1l, check_interval / 100);
     // 如何退出?
+    LOG_INFO("start to wait");
     while (!stop_) {
       const int64_t cluster_id = GCONF.cluster_id;
       if (OB_FAIL(lst_operator_.get(cluster_id, tenant_id,
@@ -211,6 +212,7 @@ int ObLSLeaderElectionWaiter::wait_elect_leader(
       }
       sleep_interval = std::min(sleep_interval * 2, check_interval);
     }
+    LOG_INFO("finish to wait");
     if (stop_ && OB_SUCC(ret)) {
       // if loop be break, but leader not be elected, will come to this condition
       ret = OB_CANCELED;
