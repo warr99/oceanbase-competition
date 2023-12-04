@@ -282,6 +282,7 @@ int ObPreBootstrap::notify_sys_tenant_root_key()
   arg.tenant_id_ = OB_SYS_TENANT_ID;
   arg.is_set_ = false;
   obrpc::ObRootKeyResult result;
+  // 给rootservice分配内存
   if (OB_FAIL(addrs.reserve(rs_list_.count()))) {
     LOG_WARN("fail to reserve array", KR(ret));
   }

@@ -176,18 +176,26 @@ int ObLSLeaderElectionWaiter::wait_elect_leader(
       if (OB_FAIL(lst_operator_.get(cluster_id, tenant_id,
           ls_id, share::ObLSTable::DEFAULT_MODE,ls_info))) {
         LOG_WARN("get partition info failed", K(tenant_id), K(ls_id), KR(ret));
+      } else if (ls_info.replica_count() <= 1) {
+        leader = GCONF.self_addr_;
+        break;
       } else if (OB_FAIL(ls_info.find_leader(leader_replica))) {
         // failure is normal, since leader may have not taked over
+        // failure dosn't lead to break the loop, it will continue the logic in while
       } else if (NULL == leader_replica) {
         ret = OB_ERR_UNEXPECTED;
         LOG_WARN("NULL leader", KR(ret));
       } else if (!leader.is_valid()) {
+        // leader is an ipv4 or ipv6 address, if has leader && leader's addr invalid
+        // this loop will be break
         leader = leader_replica->get_server();
         break;
       } else if (leader == leader_replica->get_server()) {
         break;
       }
       if (OB_SUCCESS != ret || leader != leader_replica->get_server()) {
+        // if the leader has not been elected, code will sleep and wait to the new leader
+        // or time up
         const int64_t now = ObTimeUtility::current_time();
         if (now < abs_timeout) {
           if (OB_FAIL(check_sleep(std::min(sleep_interval, abs_timeout - now)))) {
@@ -204,6 +212,7 @@ int ObLSLeaderElectionWaiter::wait_elect_leader(
       sleep_interval = std::min(sleep_interval * 2, check_interval);
     }
     if (stop_ && OB_SUCC(ret)) {
+      // if loop be break, but leader not be elected, will come to this condition
       ret = OB_CANCELED;
       LOG_WARN("stop flag set, cancel task", KR(ret));
     }
