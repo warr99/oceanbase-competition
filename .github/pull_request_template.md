@@ -16,19 +16,6 @@ You can link the issue via the "close #xxx" or "ref #xxx".
 
 <!-- Please clearly and consice descipt the solution. -->
 
-### Passed Regressions
+### The Execution Time After Optimization (s)
 
-<!-- Unittest, mysql test or test it manually? -->
-
-### Upgrade Compatibility
-
-<!-- Please make sure this is compatible with old version or you should give us upgrading solution. -->
-
-### Other Information
-
-<!-- Any information helping to review this pull request. -->
-
-### Release Note
-<!--
-A concise release note can help users to understand how your pull request makes difference.
--->
+<!-- Optimized execution time (based on test results, unit: seconds). -->
