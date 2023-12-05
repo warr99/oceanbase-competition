@@ -831,14 +831,16 @@ int ObLSInfo::find_leader(const ObLSReplica *&replica) const
       LOG_INFO("has only one replica", "role", replicas_.at(0).get_role());
     }
     FOREACH_CNT_X(r, replicas_, OB_SUCC(ret)) {
-      if (r->get_proposal_id() >= laster_proposal_id) {
+      if (r->get_proposal_id() > laster_proposal_id) {
+      // if (r->get_proposal_id() >= laster_proposal_id) {
         find_index = index;
         laster_proposal_id = r->get_proposal_id();
       }
       index ++;
     }
     if (find_index != -1) {
-      if (replicas_.count() > 1 && !replicas_.at(find_index).is_strong_leader()) {
+      if (!replicas_.at(find_index).is_strong_leader()) {
+      // if (replicas_.count() > 1 && !replicas_.at(find_index).is_strong_leader()) {
         ret = OB_ENTRY_NOT_EXIST;
         LOG_WARN("fail to get leader replica", KR(ret), K(find_index), "role", replicas_.at(find_index).get_role(),
                  "proposal_id_", replicas_.at(find_index).get_proposal_id(), K(*this));

@@ -174,7 +174,7 @@ if __name__ == "__main__":
     if args.perf_all:
         __gen_perf(home_abs_path, 42)
 
-    time.sleep(10)
+    time.sleep(5)
     try:
         db = __try_to_connect(args.ip, int(args.mysql_port))
         cursor = db.cursor(cursor=mysql.cursors.DictCursor)

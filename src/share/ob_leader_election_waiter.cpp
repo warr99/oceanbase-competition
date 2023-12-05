@@ -177,10 +177,12 @@ int ObLSLeaderElectionWaiter::wait_elect_leader(
       if (OB_FAIL(lst_operator_.get(cluster_id, tenant_id,
           ls_id, share::ObLSTable::DEFAULT_MODE,ls_info))) {
         LOG_WARN("get partition info failed", K(tenant_id), K(ls_id), KR(ret));
-      } else if (ls_info.replica_count() <= 1) {
-        leader = GCONF.self_addr_;
-        break;
-      } else if (OB_FAIL(ls_info.find_leader(leader_replica))) {
+      } 
+      // else if (ls_info.replica_count() <= 1) {
+      //   leader = GCONF.self_addr_;
+      //   break;
+      // } 
+      else if (OB_FAIL(ls_info.find_leader(leader_replica))) {
         // failure is normal, since leader may have not taked over
         // failure dosn't lead to break the loop, it will continue the logic in while
       } else if (NULL == leader_replica) {
