@@ -214,6 +214,7 @@ int ObTenantThreadHelper::wait_tenant_schema_and_version_ready_(
       ret = OB_SUCCESS;
       if (OB_FAIL(get_tenant_schema(tenant_id, tenant_schema))) {
         LOG_WARN("failed to get tenant schema", KR(ret), K(tenant_id));
+      // 等待tenant创建完毕
       } else if (tenant_schema.is_creating()) {
         ret = OB_NEED_WAIT;
         LOG_WARN("tenant schema not ready, no need tenant balance", KR(ret), K(tenant_schema));
@@ -222,7 +223,7 @@ int ObTenantThreadHelper::wait_tenant_schema_and_version_ready_(
       }
 
       if (!is_ready) {
-        idle(10 * 1000 *1000);
+        idle(1 * 1000 *1000);
       }
     }
 

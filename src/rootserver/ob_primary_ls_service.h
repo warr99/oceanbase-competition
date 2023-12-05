@@ -98,7 +98,8 @@ private:
   int report_sys_ls_recovery_stat_();
   int set_tenant_dropping_status_(const common::ObIArray<ObLSStatusMachineParameter> &status_machine_array,
                                   int64_t &task_cnt);
-  int try_set_next_ls_status_(const common::ObIArray<ObLSStatusMachineParameter> &status_machine_array);
+  int try_set_next_ls_status_(const common::ObIArray<ObLSStatusMachineParameter> &status_machine_array,
+                              const share::schema::ObTenantSchema &tenant_schema);
 
   int try_delete_ls_(const share::ObLSStatusInfo &ls_info);
   int sys_ls_tenant_drop_(const share::ObLSStatusInfo &info);

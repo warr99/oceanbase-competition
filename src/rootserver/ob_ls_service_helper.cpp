@@ -494,6 +494,7 @@ int ObLSServiceHelper::process_status_to_steady(
   int ret = OB_SUCCESS;
   ObArray<ObLSStatusMachineParameter> status_machine_array;
   const uint64_t tenant_id = tenant_ls_info.get_tenant_id();
+  LOG_INFO("start to process status to steady", K(tenant_id));
   if (OB_ISNULL(GCTX.sql_proxy_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("sql proxy is null", KR(ret), KP(GCTX.sql_proxy_));
@@ -502,6 +503,7 @@ int ObLSServiceHelper::process_status_to_steady(
     LOG_WARN("failed to construct ls status machine array", KR(ret), K(lock_sys_ls), K(tenant_id));
   } else {
     int tmp_ret = OB_SUCCESS;
+    LOG_INFO("prepare to process status to steady", K(tenant_id), K(status_machine_array));
     ARRAY_FOREACH_NORET(status_machine_array, idx) {
       const ObLSStatusMachineParameter &machine = status_machine_array.at(idx);
       //ignore error of each ls
@@ -524,6 +526,31 @@ int ObLSServiceHelper::process_status_to_steady(
     }
   }
 
+  return ret;
+}
+
+int ObLSServiceHelper::process_status_to_steady_(
+      const ObLSStatusMachineParameter &machine,
+      const share::ObTenantSwitchoverStatus &working_sw_status,
+      ObTenantLSInfo &tenant_ls_info)
+{
+  int ret = OB_SUCCESS;
+  int tmp_ret = OB_SUCCESS;
+  if (OB_SUCCESS != (tmp_ret = revision_to_equal_status_(machine, working_sw_status, tenant_ls_info))) {
+    LOG_WARN("failed to fix ls status", KR(ret), KR(tmp_ret), K(machine), K(tenant_ls_info));
+    ret = OB_SUCC(ret) ? tmp_ret : ret;
+  } else if (machine.ls_info_.get_ls_status() != machine.status_info_.status_) {
+    //no need do next, or ls is normal, no need process next
+    //or ls status not equal, no need to next
+  } else if (machine.ls_info_.ls_is_normal() && machine.ls_info_.get_ls_group_id() != machine.status_info_.ls_group_id_) {
+    // ***TODO(linqiucen.lqc) wait tenant_sync_scn > sys_ls_end_scn
+    if (OB_TMP_FAIL(process_alter_ls(machine.ls_id_, machine.status_info_.ls_group_id_,
+            machine.ls_info_.get_ls_group_id(), machine.status_info_.unit_group_id_,
+            tenant_ls_info, *GCTX.sql_proxy_))) {
+      LOG_WARN("failed to process alter ls", KR(ret), KR(tmp_ret), K(machine));
+      ret = OB_SUCC(ret) ? tmp_ret : ret;
+    }
+  }
   return ret;
 }
 
@@ -694,6 +721,7 @@ int ObLSServiceHelper::revision_to_equal_status_(const ObLSStatusMachineParamete
       ret = OB_ERR_UNEXPECTED;
       LOG_WARN("status machine not expected", KR(ret), K(machine));
     }
+    // 把ls_status从created转为normal
   } else if (ls_info.ls_is_normal()) {
     if (!status_info.ls_is_created()) {
       ret = OB_ERR_UNEXPECTED;
