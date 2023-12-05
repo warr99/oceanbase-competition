@@ -358,7 +358,7 @@ int ObLSCreator::process_after_has_member_list_(
     //create end
     DEBUG_SYNC(BEFORE_PROCESS_AFTER_HAS_MEMBER_LIST);
     share::ObLSStatusOperator ls_operator;
-    // 貌似sys_ls减少了一次更新的开销
+    // 貌似sys_ls减少了一次更新的开销, 此处更新的是__all_ls_status表
     if (id_.is_sys_ls() && OB_FAIL(ls_operator.update_ls_status(
                   tenant_id_, id_, share::OB_LS_CREATING, share::OB_LS_NORMAL,
                   share::NORMAL_SWITCHOVER_STATUS, *proxy_))) {

@@ -128,6 +128,7 @@ int ObPrimaryLSService::process_all_ls(const share::schema::ObTenantSchema &tena
     }
   }
   if (OB_SUCC(ret) && 0 == task_cnt) {
+    // 把ls状态为CREATING并且status为CREATED的转为NORMAL状态的ls
     if (OB_FAIL(try_set_next_ls_status_(machine_array))) {
       LOG_WARN("failed to set next ls status", KR(ret), K(machine_array));
     }
@@ -470,6 +471,7 @@ int ObPrimaryLSService::process_all_ls_status_to_steady_(const share::schema::Ob
 }
 
 //the interface may reentry
+// 此方法创建出来的ls状态为CREATING
 int ObPrimaryLSService::create_ls_for_create_tenant()
 {
   int ret = OB_SUCCESS;

@@ -361,6 +361,9 @@ int ObLSStatusOperator::update_ls_status(
       }
     }
   }
+  if (new_status == OB_LS_NORMAL) {
+    LOG_INFO("ls status change to NORMAL");
+  }
   return ret;
 }
 

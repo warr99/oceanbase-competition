@@ -22050,7 +22050,7 @@ int ObDDLService::create_tenant(
       // 测试一下user能否在meta创建之前创建，如果能，则依赖已经完全转移到sys_tenant，可以并发创建
       // 顺便找一下user是在哪里依赖ObCommonLSService，目前找不到meta租户在哪里开启ObCommonLSService
       // 也不知道ObCommonLSService应该如何转移到sys_tenant
-      else if (OB_FAIL(create_normal_tenant(meta_tenant_id, pools, meta_tenant_schema, tenant_role,
+       else if (OB_FAIL(create_normal_tenant(meta_tenant_id, pools, meta_tenant_schema, tenant_role,
         recovery_until_scn, meta_sys_variable, false/*create_ls_with_palf*/, meta_palf_base_info, init_configs,
         arg.is_creating_standby_, arg.log_restore_source_))) {
         LOG_WARN("fail to create meta tenant", KR(ret), K(meta_tenant_id), K(pools), K(meta_sys_variable),
@@ -22762,6 +22762,7 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
       for (int64_t i = 0; OB_SUCC(ret) && i < status_info_array.count(); ++i) {
         const ObLSStatusInfo &status_info = status_info_array.at(i);
         if (status_info.ls_is_creating()) {
+          LOG_INFO("change creating to created");
           recovery_stat.reset();
           if (OB_FAIL(ls_recovery_operator.get_ls_recovery_stat(
                     tenant_id, status_info.ls_id_, false,
@@ -22776,7 +22777,7 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
           }
         }
       }  // end for
-    }*/
+    }*/ // 貌似没有作用
   }
   LOG_INFO("[CREATE_TENANT] STEP 2.5. finish create user log stream", KR(ret), K(tenant_id),
            "cost", ObTimeUtility::fast_current_time() - start_time);
@@ -22831,6 +22832,7 @@ int ObDDLService::create_tenant_sys_ls(
       LOG_WARN("fail to create tenant sys ls", KR(ret), K(pool_list), K(palf_base_info),
                K(locality), K(paxos_replica_num), K(tenant_schema), K(zone_priority));
     } else {
+      ob_usleep(3 * 1000 * 1000L);
       share::ObLSLeaderElectionWaiter ls_leader_waiter(*lst_operator_, stopped_);
       int64_t timeout = GCONF.rpc_timeout;
       if (INT64_MAX != THIS_WORKER.get_timeout_ts()) {
@@ -23240,7 +23242,7 @@ int ObDDLService::init_tenant_schema(
         LOG_WARN("fail to publish schema", KR(ret), K(tenant_id), K(addrs));
       }
     }
-
+    LOG_INFO("init tenant schema finished", KR(ret));
     // 3. set baseline schema version
     if (OB_SUCC(ret)) {
       ObGlobalStatProxy global_stat_proxy(*sql_proxy_, tenant_id);
@@ -23390,7 +23392,7 @@ int ObDDLService::create_sys_table_schemas(
               break;
             }
           }
-          LOG_INFO("worker job", K(begin), K(i), K(i-begin), K(ret));
+          LOG_INFO("worker job", K(tenant_id), K(begin), K(i), K(i-begin), K(ret));
         });
         
         if (OB_SUCC(ret)) {
@@ -23407,7 +23409,7 @@ int ObDDLService::create_sys_table_schemas(
       LOG_WARN("parallel_create_table_schema fail", K(finish_cnt), K(tables.count()), K(ret));
     }
     const int64_t now = ObTimeUtility::current_time();
-    LOG_INFO("finish parallel_create_table_schema", "cost", now - begin_create);
+    LOG_INFO("finish parallel_create_table_schema", K(tenant_id), "cost", now - begin_create);
   }
 
   return ret;

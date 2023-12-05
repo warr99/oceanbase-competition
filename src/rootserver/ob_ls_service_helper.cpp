@@ -649,6 +649,8 @@ int ObLSServiceHelper::revision_to_equal_status_(const ObLSStatusMachineParamete
   } else if (OB_ISNULL(GCTX.sql_proxy_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("sql proxy is null", KR(ret), KP(GCTX.sql_proxy_));
+    // 似乎ls_info的status一般都是CREATING和NORMAL
+    // 而status的status一般是CREATING、CREATED和NORMAL
   } else if (ls_info.get_ls_status() == status_info.status_) {
     //if ls and ls status is equal, need to process next ls status
   } else if (!ls_info.is_valid()) {
