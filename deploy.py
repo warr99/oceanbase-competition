@@ -45,6 +45,12 @@ def __clear_env(cluster_home_path:str) -> None:
         path_to_clear = os.path.join(cluster_home_path, path)
         shutil.rmtree(path_to_clear, ignore_errors=True)
 
+def _kill_observer(cluster_home_path:str) -> None:
+    observer_bin_path = __observer_bin_path(cluster_home_path)
+    pid = subprocess.getoutput(f'pidof {observer_bin_path}')
+    if pid:
+        subprocess.run(f'kill -9 {pid}', shell=True)
+
 def __gen_perf(cluster_home_path:str, sleep_time:int) -> None:
     observer_bin_path = __observer_bin_path(cluster_home_path)
     pid = subprocess.getoutput(f'pidof {observer_bin_path}')
@@ -52,7 +58,7 @@ def __gen_perf(cluster_home_path:str, sleep_time:int) -> None:
         _logger.info('start to gen perf.data, pid=%s, sleep=%ds', pid, sleep_time)
         # 定义一个新的函数来运行 subprocess.run
         def run_perf_command():
-            subprocess.run(f'perf record -F 99 -p {pid} -g -o ./perf.data -- sleep {sleep_time}', shell=True)
+            subprocess.run(f'perf record -F 99 -p {pid} -g -o /home/ChenXr/FlameGraph/perf.data -- sleep {sleep_time}', shell=True)
 
 
         # 创建一个线程并启动它
@@ -118,6 +124,7 @@ if __name__ == "__main__":
     parser.add_argument("--cluster-home-path", dest='cluster_home_path', type=str, help="the path of sys log / config file / sql.sock / audit info")
     parser.add_argument("--only_build_env", action='store_true', help="build env & start observer without bootstrap and basic check")
     parser.add_argument('--clean', action='store_true', help='clean deploy directory and exit')
+    parser.add_argument('--kill', action='store_true', help='kill the observer but not clean deploy directory')
     parser.add_argument('--perf_all', action='store_true', help='monitor the entire process and generate perf.data')
     parser.add_argument('--perf_create_tenant', action='store_true', help='monitor the process of creating tenants and generate perf.data')
     parser.add_argument("-p", dest="mysql_port", type=str, default="2881")
@@ -145,6 +152,10 @@ if __name__ == "__main__":
     bin_abs_path = __observer_bin_path(home_abs_path)
     data_abs_path = os.path.abspath(__data_path(args.cluster_home_path))
 
+    if args.kill:
+        _kill_observer(home_abs_path)
+        exit(0)
+
     if args.clean:
         __clear_env(home_abs_path)
         exit(0)
@@ -163,7 +174,7 @@ if __name__ == "__main__":
     if args.perf_all:
         __gen_perf(home_abs_path, 42)
 
-    time.sleep(10)
+    time.sleep(2)
     try:
         db = __try_to_connect(args.ip, int(args.mysql_port))
         cursor = db.cursor(cursor=mysql.cursors.DictCursor)

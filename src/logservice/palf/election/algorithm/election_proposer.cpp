@@ -301,7 +301,8 @@ int ElectionProposer::start()
   #define PRINT_WRAPPER K(*this)
   ELECT_TIME_GUARD(500_ms);
   int ret = OB_SUCCESS;
-  if (CLICK_FAIL(reschedule_or_register_prepare_task_after_(3_s))) {
+  LOG_INIT(INFO, "start election proposer");
+  if (CLICK_FAIL(reschedule_or_register_prepare_task_after_(0))) {
     LOG_INIT(ERROR, "first time register devote task failed");
   } else if (CLICK_FAIL(register_renew_lease_task_())) {
     LOG_INIT(ERROR, "first time register renew lease task failed");
@@ -459,7 +460,7 @@ void ElectionProposer::on_prepare_response(const ElectionPrepareResponseMsg &pre
   // 2. 检查是否具备进入accept阶段的条件
   } else if (!(res_lease.is_empty() ||// 1. 对方目前没有lease
               res_lease.get_owner() == p_election_->get_self_addr() ||// 2. lease是本proposer发出的
-              (res_lease.get_owner() == switch_source_leader_addr_ &&// 3. 对方的lease是切主源端的
+              (res_lease.get_owner() == switch_source_leader_addr_ &&// 3. 对方的lease是切主源端的(有一个 Leader 将自己的位置让给了它)
               res_lease.get_ballot_number() == switch_source_leader_ballot_))) {// 处于旧主的ballot内
     LOG_PHASE(INFO, phase, "peer lease still valid, not count");
   // 3. 记录对方的应答，计入多数派中

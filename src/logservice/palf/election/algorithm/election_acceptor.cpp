@@ -116,6 +116,15 @@ void ElectionAcceptor::advance_ballot_number_and_reset_related_states_(const int
   #undef PRINT_WRAPPER
 }
 
+/**
+  * 时间窗口是怎么做到让 OB 支持通过优先级选举出 Leader 的？以下是简化的步骤
+  * 1. 每次acceptor收到一个新的选举轮次的 prepare 请求时，会打开一个时间窗口，也就是设置上述的两个信息。
+  * 2. 后台会有一个定时任务，会在时间窗口关闭时执行，而时间窗口的生命长度为“两个消息最大往返延迟”。
+  * 3. 在窗口开启的时候，对于收到的当前选举轮次的所有节点的 prepare 消息，保留优先级最高的那个。
+  * 4. 时间窗口关闭之时，会对缓存的优先级最高的节点回复 ok 信息。
+
+  * 上面提到的“后台会有一个定时任务，会在时间窗口关闭时执行”，指的就是下面的 time_window_task_handle_
+*/
 int ElectionAcceptor::start()
 {
   ObAddr last_record_lease_owner;
@@ -223,7 +232,7 @@ void ElectionAcceptor::on_prepare_request(const ElectionPrepareRequestMsg &prepa
 {
   ELECT_TIME_GUARD(500_ms);
   #define PRINT_WRAPPER KR(ret), K(prepare_req), K(*this)
-  CHECK_SILENCE();// 启动后的要维持一段静默时间，acceptor假装看不到任何消息，以维护lease的正确语义
+  // CHECK_SILENCE();// 启动后的要维持一段静默时间，acceptor假装看不到任何消息，以维护lease的正确语义
   int ret = OB_SUCCESS;
   LogPhase phase = (prepare_req.get_role() == common::ObRole::FOLLOWER ? LogPhase::ELECT_LEADER : LogPhase::RENEW_LEASE);
   LOG_PHASE(INFO, phase, "handle prepare request");
@@ -307,7 +316,7 @@ void ElectionAcceptor::on_accept_request(const ElectionAcceptRequestMsg &accept_
 {
   ELECT_TIME_GUARD(500_ms);
   #define PRINT_WRAPPER KR(ret), K(accept_req), K(*this)
-  CHECK_SILENCE();// 启动后的要维持一段静默时间，acceptor假装看不到任何消息，以维护lease的语义
+  // CHECK_SILENCE();// 启动后的要维持一段静默时间，acceptor假装看不到任何消息，以维护lease的语义
   int ret = OB_SUCCESS;
   if (OB_LIKELY(RequestChecker::check_ballot_valid(accept_req,
                                                    this,
