@@ -252,7 +252,7 @@ int ElectionImpl::handle_message(const ElectionAcceptRequestMsg &msg)
   int ret = common::OB_SUCCESS;
   int64_t us_to_expired = 0;
   {
-    LOG_NONE(INFO, "start handle prepare req");
+    LOG_NONE(INFO, "start handle accept req");
     LockGuard lock_guard(lock_);
     handle_message_base_(msg);
     msg_counter_.add_received_count(msg);
