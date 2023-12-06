@@ -339,11 +339,9 @@ void ElectionProposer::prepare(const ObRole role)
     LOG_PHASE(INFO, phase, "self is not in memberlist, give up do prepare");
   // 如果自己是 Follower，且此次 prepare 与上一次的间隔太短
   //（小于 “最大的一轮选的时间的一半”：10/2 = 5s），则放弃此次 prepare
-  } 
-  // else if (role == ObRole::FOLLOWER && cur_ts - last_do_prepare_ts_ < CALCULATE_MAX_ELECT_COST_TIME() / 2) {// 若这是一个一乎动作，且距离上一次一呼百应的时间点过近，该次一乎调度无效
-  //   LOG_PHASE(INFO, phase, "the prepare action just happened, need wait next time");
-  // }
-  else {
+  } else if (role == ObRole::FOLLOWER && cur_ts - last_do_prepare_ts_ < CALCULATE_MAX_ELECT_COST_TIME() / 2) {// 若这是一个一乎动作，且距离上一次一呼百应的时间点过近，该次一乎调度无效
+    LOG_PHASE(INFO, phase, "the prepare action just happened, need wait next time");
+  } else {
     last_do_prepare_ts_ = cur_ts;
     // 1. Leader prepare不推ballot number，Follower prepare需要推大自己的ballot number再进行
     if (role == ObRole::FOLLOWER) {
