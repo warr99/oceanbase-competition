@@ -94,6 +94,7 @@ void ObCommonLSService::do_work()
           // 似乎是用来使得其他节点也收到创建ls的命令
           // 并且在创建完成后，让这些节点都把ls_status设置为CREATED
           // 最后把sys_ls的status设置为NORMAL
+          // 已经迁移到ObPrimaryLSService
         } /*else if (OB_TMP_FAIL(try_create_ls_(user_tenant_schema))) {
           LOG_WARN("failed to create ls", KR(ret), KR(tmp_ret), K(user_tenant_schema));
         }*/
