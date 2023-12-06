@@ -11,6 +11,7 @@
  */
 
 #define USING_LOG_PREFIX RS
+#include "ob_common_ls_service.h"
 #include "rootserver/ob_ddl_service.h"
 
 #include "lib/oblog/ob_log.h"
@@ -21789,6 +21790,7 @@ int ObDDLService::generate_tenant_schema(
     common::ObIArray<common::ObConfigPairs> &init_configs)
 {
   int ret = OB_SUCCESS;
+  const int64_t start_time = ObTimeUtility::fast_current_time();
   uint64_t user_tenant_id = arg.tenant_schema_.get_tenant_id();
   if (OB_FAIL(check_inner_stat())) {
     LOG_WARN("fail to check inner stat", KR(ret));
@@ -21878,6 +21880,7 @@ int ObDDLService::generate_tenant_schema(
       }
     }
   }
+  LOG_INFO("generate_tenant_schema finished", KR(ret), "cost", ObTimeUtility::fast_current_time() - start_time);
   return ret;
 }
 
@@ -21945,6 +21948,38 @@ int ObDDLService::init_schema_status(
   return ret;
 }
 
+static int init_user_tenant_info(ObDDLService &ddl_service,
+                                 const ObTenantSchema &tenant_schema,
+                                 const share::ObTenantRole &tenant_role,
+                                 const SCN &recovery_until_scn)
+{
+  int ret = OB_SUCCESS;
+  ObDDLSQLTransaction trans(&ddl_service.get_schema_service(), true, false, false, false);
+  const int64_t init_schema_version = tenant_schema.get_schema_version();
+  const uint64_t tenant_id = tenant_schema.get_tenant_id();
+  const int64_t refreshed_schema_version = 0;
+  if (OB_FAIL(trans.start(&ddl_service.get_sql_proxy(), OB_SYS_TENANT_ID, refreshed_schema_version))) {
+    LOG_WARN("trans start failed", KR(ret), K(tenant_id));
+  }
+  ObAllTenantInfo tenant_info;
+  if (OB_FAIL(tenant_info.init(tenant_id, tenant_role, NORMAL_SWITCHOVER_STATUS, 0,
+              SCN::base_scn(), SCN::base_scn(), SCN::base_scn(), recovery_until_scn))) {
+    LOG_WARN("failed to init tenant info", KR(ret), K(tenant_id), K(tenant_role));
+  } else if (OB_FAIL(ObAllTenantInfoProxy::init_tenant_info(tenant_info, &trans))) {
+    LOG_WARN("failed to init tenant info", KR(ret), K(tenant_info));
+  }
+
+  if (trans.is_started()) {
+    int temp_ret = OB_SUCCESS;
+    bool commit = OB_SUCC(ret);
+    if (OB_SUCCESS != (temp_ret = trans.end(commit))) {
+      ret = (OB_SUCC(ret)) ? temp_ret : ret;
+      LOG_WARN("trans end failed", K(commit), K(temp_ret));
+    }
+  }
+  return ret;
+}
+
 int ObDDLService::create_tenant(
     const ObCreateTenantArg &arg,
     share::schema::ObSchemaGetterGuard &schema_guard,
@@ -21999,7 +22034,7 @@ int ObDDLService::create_tenant(
       LOG_WARN("fail to init schema status", KR(ret), K(user_tenant_id));
     } else if (OB_FAIL(create_tenant_schema(
                arg, schema_guard, user_tenant_schema,
-               meta_tenant_schema, init_configs))) {
+               meta_tenant_schema, init_configs))) {    // 包含创建用户的逻辑
       LOG_WARN("fail to create tenant schema", KR(ret), K(arg));
     } else {
       DEBUG_SYNC(BEFORE_CREATE_META_TENANT);
@@ -22007,20 +22042,40 @@ int ObDDLService::create_tenant(
       ObArray<ObResourcePoolName> pools;
       if (OB_FAIL(get_pools(arg.pool_list_, pools))) {
         LOG_WARN("get_pools failed", KR(ret), K(arg));
+      }
+      // 插入user租户的tenant_info
+      else if (OB_FAIL(init_user_tenant_info(*this, user_tenant_schema, tenant_role, recovery_until_scn))) {
+        LOG_WARN("init user tenant info failed", KR(ret));
+      } 
+      // 测试一下user能否在meta创建之前创建，如果能，则依赖已经完全转移到sys_tenant，可以并发创建
+      // 顺便找一下user是在哪里依赖ObCommonLSService，目前找不到meta租户在哪里开启ObCommonLSService
+      // 也不知道ObCommonLSService应该如何转移到sys_tenant
+      //  else if (OB_FAIL(create_normal_tenant(meta_tenant_id, pools, meta_tenant_schema, tenant_role,
+      //   recovery_until_scn, meta_sys_variable, false/*create_ls_with_palf*/, meta_palf_base_info, init_configs,
+      //   arg.is_creating_standby_, arg.log_restore_source_))) {
+      //   LOG_WARN("fail to create meta tenant", KR(ret), K(meta_tenant_id), K(pools), K(meta_sys_variable),
+      //       K(tenant_role), K(recovery_until_scn), K(meta_palf_base_info), K(init_configs));
+      // } else {
+      //   ObString empty_str;
+      //   DEBUG_SYNC(BEFORE_CREATE_USER_TENANT);
+        // if (OB_FAIL(create_normal_tenant(user_tenant_id, pools, user_tenant_schema, tenant_role,
+        //       recovery_until_scn, user_sys_variable, create_ls_with_palf, user_palf_base_info, init_configs,
+        //       false /* is_creating_standby */, empty_str))) {
+        //   LOG_WARN("fail to create user tenant", KR(ret), K(user_tenant_id), K(pools), K(user_sys_variable),
+        //       K(tenant_role), K(recovery_until_scn), K(user_palf_base_info));
+        // }
+      // }
+      ObString empty_str;
+      if (OB_FAIL(create_normal_tenant(user_tenant_id, pools, user_tenant_schema, tenant_role,
+            recovery_until_scn, user_sys_variable, create_ls_with_palf, user_palf_base_info, init_configs,
+            false /* is_creating_standby */, empty_str))) {
+        LOG_WARN("fail to create user tenant", KR(ret), K(user_tenant_id), K(pools), K(user_sys_variable),
+            K(tenant_role), K(recovery_until_scn), K(user_palf_base_info));
       } else if (OB_FAIL(create_normal_tenant(meta_tenant_id, pools, meta_tenant_schema, tenant_role,
-        recovery_until_scn, meta_sys_variable, false/*create_ls_with_palf*/, meta_palf_base_info, init_configs,
-        arg.is_creating_standby_, arg.log_restore_source_))) {
-        LOG_WARN("fail to create meta tenant", KR(ret), K(meta_tenant_id), K(pools), K(meta_sys_variable),
+            recovery_until_scn, meta_sys_variable, false/*create_ls_with_palf*/, meta_palf_base_info, init_configs,
+            arg.is_creating_standby_, arg.log_restore_source_))) {
+          LOG_WARN("fail to create meta tenant", KR(ret), K(meta_tenant_id), K(pools), K(meta_sys_variable),
             K(tenant_role), K(recovery_until_scn), K(meta_palf_base_info), K(init_configs));
-      } else {
-        ObString empty_str;
-        DEBUG_SYNC(BEFORE_CREATE_USER_TENANT);
-        if (OB_FAIL(create_normal_tenant(user_tenant_id, pools, user_tenant_schema, tenant_role,
-              recovery_until_scn, user_sys_variable, create_ls_with_palf, user_palf_base_info, init_configs,
-              false /* is_creating_standby */, empty_str))) {
-          LOG_WARN("fail to create user tenant", KR(ret), K(user_tenant_id), K(pools), K(user_sys_variable),
-              K(tenant_role), K(recovery_until_scn), K(user_palf_base_info));
-        }
       }
       // drop tenant if create tenant failed.
       // meta tenant will be force dropped with its user tenant.
@@ -22041,7 +22096,11 @@ int ObDDLService::create_tenant(
   } else if (OB_FAIL(create_tenant_end(user_tenant_id))) {
     LOG_WARN("failed to create tenant end", KR(ret), K(user_tenant_id));
   }
-
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(publish_schema(OB_SYS_TENANT_ID))) {
+      LOG_WARN("publish schema failed", K(ret));
+    }
+  }
   if (OB_SUCC(ret)) {
     tenant_id = user_tenant_id;
   }
@@ -22182,7 +22241,7 @@ int ObDDLService::create_tenant_schema(
                          trans, new_ug_id_array,
                          compat_mode,
                          pools, user_tenant_id,
-                         false/*is_bootstrap*/))) {
+                         false/*is_bootstrap*/))) /*about 500ms */ {
         LOG_WARN("grant_pools_to_tenant failed", KR(ret), K(pools), K(user_tenant_id));
       }
       LOG_INFO("[CREATE_TENANT] STEP 1.2. finish grant pools", KR(ret), K(user_tenant_id),
@@ -22681,10 +22740,14 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
       const int64_t timeout = ctx.get_timeout();
       if (OB_TMP_FAIL(GCTX.location_service_->get_leader(GCONF.cluster_id, tenant_id, SYS_LS, FALSE, leader))) {
         LOG_WARN("failed to get leader", KR(ret), KR(tmp_ret), K(tenant_id));
-      } else if (OB_TMP_FAIL(rpc_proxy_->to(leader).timeout(timeout)
+      }
+      const int64_t rpc_start_time = ObTimeUtility::fast_current_time();
+      if (OB_TMP_FAIL(rpc_proxy_->to(leader).timeout(timeout)
             .notify_create_tenant_user_ls(tenant_id))) {
         LOG_WARN("failed to create tenant user ls", KR(ret), KR(tmp_ret), K(tenant_id), K(leader), K(timeout));
       } else {
+        LOG_INFO("notify create tenant user ls rpc finished", 
+                "cost", ObTimeUtility::fast_current_time() - rpc_start_time);
         break;
       }
     }
@@ -22692,6 +22755,41 @@ int ObDDLService::create_tenant_user_ls(const uint64_t tenant_id)
       ret = OB_TIMEOUT;
       LOG_WARN("create user ls timeout", KR(ret));
     }
+    /*if (OB_SUCC(ret) && !ctx.is_timeouted()) {
+      LOG_INFO("start to change ls status");
+      share::ObLSStatusInfoArray status_info_array;
+      share::ObLSStatusOperator ls_op;
+      ObLSRecoveryStat recovery_stat;
+      ObLSRecoveryStatOperator ls_recovery_operator;
+      palf::PalfBaseInfo palf_base_info;
+      int tmp_ret = OB_SUCCESS;
+      ObTenantSchema tenant_schema;
+      if (OB_FAIL(ObTenantThreadHelper::get_tenant_schema(tenant_id, tenant_schema))) {
+        LOG_WARN("failed to get user tenant schema", KR(ret), K(tenant_id));
+      } else if (OB_FAIL(ls_op.get_all_ls_status_by_order(
+              tenant_id, status_info_array, *GCTX.sql_proxy_))) {
+        LOG_WARN("failed to get all ls status", KR(ret), K(tenant_id));
+      }
+      LOG_INFO("get all ls status by order finished", "count", status_info_array.count());
+      for (int64_t i = 0; OB_SUCC(ret) && i < status_info_array.count(); ++i) {
+        const ObLSStatusInfo &status_info = status_info_array.at(i);
+        if (status_info.ls_is_creating()) {
+          LOG_INFO("change creating to created");
+          recovery_stat.reset();
+          if (OB_FAIL(ls_recovery_operator.get_ls_recovery_stat(
+                    tenant_id, status_info.ls_id_, false,
+                    recovery_stat, *GCTX.sql_proxy_))) {
+            LOG_WARN("failed to get ls recovery stat", KR(ret), K(tenant_id),
+                       K(status_info));
+          } else if (OB_FAIL(ObCommonLSService::do_create_user_ls(tenant_schema, status_info,
+                                               recovery_stat.get_create_scn(),
+                                               false, palf_base_info))) {
+            LOG_WARN("failed to create new ls", KR(ret), K(status_info),
+                       K(recovery_stat));
+          }
+        }
+      }  // end for
+    }*/ // 貌似没有作用
   }
   LOG_INFO("[CREATE_TENANT] STEP 2.5. finish create user log stream", KR(ret), K(tenant_id),
            "cost", ObTimeUtility::fast_current_time() - start_time);
@@ -22752,11 +22850,11 @@ int ObDDLService::create_tenant_sys_ls(
         timeout = max(timeout, THIS_WORKER.get_timeout_remain());
       }
       int64_t wait_leader_start = ObTimeUtility::current_time();
-      if (OB_FAIL(ls_leader_waiter.wait(tenant_id, SYS_LS, timeout))) {
+      if (OB_FAIL(ls_leader_waiter.wait(tenant_id, SYS_LS, timeout))) { // execute 2.85s, but wait execute 2.6s
         LOG_WARN("fail to wait election leader", KR(ret), K(tenant_id), K(SYS_LS), K(timeout));
       }
       int64_t wait_leader_end = ObTimeUtility::current_time();
-      wait_leader = wait_leader_end - wait_leader_end;
+      wait_leader = wait_leader_end - wait_leader_start;
     }
   }
   if (is_meta_tenant(tenant_id)) {
@@ -23050,6 +23148,7 @@ int ObDDLService::init_tenant_schema(
       }
 
       common::ObMySQLTransaction trans;
+      const int64_t write_upgrade_barrier_log_start_time = ObTimeUtility::fast_current_time();
       if (OB_FAIL(ret)) {
       } else if (OB_FAIL(trans.start(sql_proxy_, tenant_id))) {
         LOG_WARN("failed to start trans", KR(ret), K(tenant_id));
@@ -23077,6 +23176,7 @@ int ObDDLService::init_tenant_schema(
           ret = OB_SUCC(ret) ? tmp_ret : ret;
         }
       }
+      LOG_INFO("write upgrade barrier log finished", KR(ret), "cost", ObTimeUtility::fast_current_time() - write_upgrade_barrier_log_start_time);
     }
 
     // 2. init tenant schema
@@ -23153,7 +23253,7 @@ int ObDDLService::init_tenant_schema(
         LOG_WARN("fail to publish schema", KR(ret), K(tenant_id), K(addrs));
       }
     }
-
+    LOG_INFO("init tenant schema finished", KR(ret));
     // 3. set baseline schema version
     if (OB_SUCC(ret)) {
       ObGlobalStatProxy global_stat_proxy(*sql_proxy_, tenant_id);
@@ -23303,7 +23403,7 @@ int ObDDLService::create_sys_table_schemas(
               break;
             }
           }
-          LOG_INFO("worker job", K(begin), K(i), K(i-begin), K(ret));
+          LOG_INFO("worker job", K(tenant_id), K(begin), K(i), K(i-begin), K(ret));
         });
         
         if (OB_SUCC(ret)) {
@@ -23320,7 +23420,7 @@ int ObDDLService::create_sys_table_schemas(
       LOG_WARN("parallel_create_table_schema fail", K(finish_cnt), K(tables.count()), K(ret));
     }
     const int64_t now = ObTimeUtility::current_time();
-    LOG_INFO("finish parallel_create_table_schema", "cost", now - begin_create);
+    LOG_INFO("finish parallel_create_table_schema", K(tenant_id), "cost", now - begin_create);
   }
 
   return ret;
@@ -23410,6 +23510,7 @@ int ObDDLService::create_tenant_end(const uint64_t tenant_id)
   } else if (OB_FAIL(new_tenant_schema.assign(*tenant_schema))) {
     LOG_WARN("fail to assign tenant schema", KR(ret));
   } else {
+    LOG_INFO("load tenant_info success", K(tenant_info));
     ObDDLSQLTransaction tenant_trans(schema_service_);
     ObDDLOperator ddl_operator(*schema_service_, *sql_proxy_);
     int64_t refreshed_schema_version = OB_INVALID_VERSION;
@@ -23458,6 +23559,7 @@ int ObDDLService::create_tenant_end(const uint64_t tenant_id)
       }
 
       if (OB_FAIL(ret)) {
+        // update tenant status from CREATING to NORMAL
       } else if (OB_FAIL(ddl_operator.create_tenant(new_tenant_schema, OB_DDL_ADD_TENANT_END, trans, ddl_stmt_str_ptr))) {
         LOG_WARN("create tenant failed", K(new_tenant_schema), K(ret));
       } else {/*do nothing*/}
@@ -23480,11 +23582,6 @@ int ObDDLService::create_tenant_end(const uint64_t tenant_id)
       if (OB_SUCCESS != (temp_ret = tenant_trans.end(is_commit))) {
         ret = (OB_SUCC(ret)) ? temp_ret : ret;
         LOG_WARN("trans end failed",  KR(ret), KR(temp_ret), K(is_commit));
-      }
-    }
-    if (OB_SUCC(ret)) {
-      if (OB_SUCCESS != (temp_ret = publish_schema(OB_SYS_TENANT_ID))) {
-        LOG_WARN("publish schema failed", K(temp_ret));
       }
     }
   }
@@ -26598,7 +26695,8 @@ int ObDDLService::publish_schema(uint64_t tenant_id,
     LOG_WARN("variable is not init");
   } else if (OB_FAIL(refresh_schema(tenant_id))) {
     LOG_WARN("refresh schema failed", K(ret));
-  } else if (OB_FAIL(notify_refresh_schema(addrs))) {
+    // FIXME: judge addrs[0] == GCONF.self_addr_
+  } else if (addrs.count() > 1 && OB_FAIL(notify_refresh_schema(addrs))) {
     LOG_WARN("notify refresh schema failed", K(ret));
   }
 

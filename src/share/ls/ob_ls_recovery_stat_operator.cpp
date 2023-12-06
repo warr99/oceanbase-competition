@@ -147,7 +147,7 @@ int ObLSRecoveryStatOperator::create_new_ls(const ObLSStatusInfo &ls_info,
             ls_info.ls_id_.id(), create_ls_scn.get_val_for_inner_table_field(),
             init_scn_value, init_scn_value, init_scn_value))) {
       LOG_WARN("failed to assing sql", KR(ret), K(ls_info), K(create_ls_scn), K(init_scn_value));
-    } else if (OB_FAIL(exec_write(ls_info.tenant_id_, sql, this, trans))) {
+    } else if (OB_FAIL(exec_write(/*ls_info.tenant_id_*/ OB_SYS_TENANT_ID, sql, this, trans))) {
       LOG_WARN("failed to exec write", KR(ret), K(ls_info), K(sql));
     }
     LOG_INFO("[LS_RECOVERY] create new ls", KR(ret), K(ls_info), K(create_ls_scn), K(init_scn));

@@ -164,14 +164,14 @@ int ObRestoreUtil::insert_user_tenant_restore_job(
       persist_info.key_.tenant_id_ = user_tenant_id;
       persist_info.key_.job_id_ = job_info.get_job_id();
       persist_info.restore_scn_ = job_info.get_restore_scn();
-      const uint64_t exec_tenant_id = gen_meta_tenant_id(user_tenant_id);
+      const uint64_t exec_tenant_id = gen_meta_tenant_id(OB_SYS_TENANT_ID);
       if (OB_FAIL(trans.start(&sql_client, exec_tenant_id))) {
         LOG_WARN("failed to start trans", KR(ret), K(exec_tenant_id));
       } else if (OB_FAIL(user_restore_op.init(&trans, user_tenant_id))) {
         LOG_WARN("failed to init restore op", KR(ret), K(user_tenant_id));
-      } else if (OB_FAIL(restore_persist_op.init(user_tenant_id))) {
+      } else if (OB_FAIL(restore_persist_op.init(OB_SYS_TENANT_ID))) /*这里似乎仅仅是用这个init的id来找执行租户*/ {
         LOG_WARN("failed to init restore persist op", KR(ret), K(user_tenant_id));
-      } else if (OB_FAIL(user_restore_op.insert_job(job_info))) {
+      } else if (OB_FAIL(user_restore_op.insert_job(job_info, exec_tenant_id))) {
         LOG_WARN("failed to insert job", KR(ret), K(job_info));
       } else if (OB_FAIL(restore_persist_op.insert_initial_restore_progress(trans, persist_info))) {
         LOG_WARN("failed to insert persist info", KR(ret), K(persist_info));

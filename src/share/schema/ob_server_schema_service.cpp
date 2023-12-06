@@ -5442,7 +5442,7 @@ int ObServerSchemaService::refresh_full_schema_bootstrap(
         // refresh core table schemas
         if (OB_SUCC(ret) && core_schema_change) {
           if (OB_FAIL(schema_service_->get_core_version(
-                      sql_client, schema_status, core_schema_version))) {          // 目前会失败，有点奇怪
+                      sql_client, schema_status, core_schema_version))) {
             LOG_WARN("get_core_version failed", KR(ret), K(schema_status));
           } else if (core_schema_version <= OB_CORE_SCHEMA_VERSION + 1) {
             ret = OB_EAGAIN;

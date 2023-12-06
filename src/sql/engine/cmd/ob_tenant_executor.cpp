@@ -96,9 +96,12 @@ int ObCreateTenantExecutor::execute(ObExecContext &ctx, ObCreateTenantStmt &stmt
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("if_not_exist not set and tenant_id invalid tenant_id", K(create_tenant_arg), K(tenant_id), K(ret));
   } else if (OB_INVALID_ID != tenant_id) {
+    // 证明了为阻塞的rpc调用
+    LOG_INFO("tenant executor start to wait", "cost", ObTimeUtility::current_time() - start_ts);
     int tmp_ret = OB_SUCCESS; // try refresh schema and wait ls valid
     if (OB_TMP_FAIL(wait_schema_refreshed_(tenant_id))) {
       LOG_WARN("fail to wait schema refreshed", KR(tmp_ret), K(tenant_id));
+      // 我把与ls和ls_status相关的操作全部放到了OBPrimaryLSService::do_work中
     } else if (OB_TMP_FAIL(wait_user_ls_valid_(tenant_id))) {
       LOG_WARN("failed to wait user ls valid, but ignore", KR(tmp_ret), K(tenant_id));
     }
@@ -185,6 +188,7 @@ int ObCreateTenantExecutor::wait_user_ls_valid_(const uint64_t tenant_id)
       } else if (OB_FAIL(status_op.get_all_ls_status_by_order(tenant_id, ls_array, *GCTX.sql_proxy_))) {
         LOG_WARN("failed to get ls status", KR(ret), K(tenant_id));
       } else {
+        // 等待ls_status为normal，查询的是__all_ls_status表
         for (int64_t i = 0; OB_SUCC(ret) && i < ls_array.count() && !user_ls_valid; ++i) {
           const ObLSStatusInfo &ls_status = ls_array.at(i);
           if (!ls_status.ls_id_.is_sys_ls() && ls_status.ls_is_normal()) {
@@ -198,7 +202,7 @@ int ObCreateTenantExecutor::wait_user_ls_valid_(const uint64_t tenant_id)
       } else {
         const int64_t INTERVAL = 500 * 1000L; // 500ms
         LOG_INFO("wait user ls valid", KR(ret), K(tenant_id));
-        ob_usleep(INTERVAL);
+        ob_usleep(INTERVAL); // 等待了1次
       }
     }// end while
     LOG_INFO("[CREATE TENANT] wait user ls created", KR(ret), K(tenant_id),

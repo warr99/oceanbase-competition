@@ -202,6 +202,7 @@ int ObTenantThreadHelper::wait_tenant_schema_and_version_ready_(
     const uint64_t tenant_id, const uint64_t &data_version)
 {
   int ret = OB_SUCCESS;
+  int sleep_times = 1;
   if (OB_ISNULL(GCTX.schema_service_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("schema ptr is null", KR(ret), KP(GCTX.schema_service_));
@@ -213,16 +214,18 @@ int ObTenantThreadHelper::wait_tenant_schema_and_version_ready_(
     while (!is_ready && !has_set_stop()) {
       ret = OB_SUCCESS;
       if (OB_FAIL(get_tenant_schema(tenant_id, tenant_schema))) {
-        LOG_WARN("failed to get tenant schema", KR(ret), K(tenant_id));
+        LOG_WARN("failed to get tenant schema", KR(ret), K(tenant_id), K(sleep_times));
+      // 等待tenant创建完毕
       } else if (tenant_schema.is_creating()) {
         ret = OB_NEED_WAIT;
-        LOG_WARN("tenant schema not ready, no need tenant balance", KR(ret), K(tenant_schema));
+        LOG_WARN("tenant schema not ready, no need tenant balance", KR(ret), K(tenant_schema), K(sleep_times));
       } else {
         is_ready = true;
       }
 
       if (!is_ready) {
-        idle(10 * 1000 *1000);
+        sleep_times++;
+        idle(1 * 1000 *1000);
       }
     }
 

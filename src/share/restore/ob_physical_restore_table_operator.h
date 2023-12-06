@@ -48,6 +48,12 @@ public:
    */
   int insert_job(const ObPhysicalRestoreJob &job_info);
   /*
+   * description: insert into __all_restore_job
+   * @param[in] restore job
+   * @param[in] exec_restore_tenant
+   */
+  int insert_job(const ObPhysicalRestoreJob &job_info, uint64_t exec_tenant_id);
+  /*
    * description: remove job from __all_restore_job
    * @param[in] restore job id
    */

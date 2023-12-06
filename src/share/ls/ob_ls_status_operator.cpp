@@ -167,6 +167,23 @@ int ObLSPrimaryZoneInfo::assign(const ObLSPrimaryZoneInfo &other)
 
 }
 
+/*static int load_tenant_info_for_create_new_ls(const uint64_t tenant_id,
+                            const share::ObTenantRole &tenant_role,
+                            const SCN &recovery_until_scn,
+                            ObAllTenantInfo &tenant_info)
+{
+  int ret = OB_SUCCESS;
+  tenant_info.reset();
+  int64_t ora_rowscn = 0;
+  if (is_user_tenant(tenant_id)) {
+    tenant_info.init(tenant_id, tenant_role, NORMAL_SWITCHOVER_STATUS, 0,
+                SCN::base_scn(), SCN::base_scn(), SCN::base_scn(), recovery_until_scn);
+  } else {
+    tenant_info.init(tenant_id, share::PRIMARY_TENANT_ROLE);
+  }
+  return ret;
+}*/
+
 ////////ObLSStatusOperator
 int ObLSStatusOperator::create_new_ls(const ObLSStatusInfo &ls_info,
                                       const SCN &current_tenant_scn,
@@ -202,13 +219,12 @@ int ObLSStatusOperator::create_new_ls(const ObLSStatusInfo &ls_info,
       LOG_WARN("ls flag is not empty", KR(ret), K(ls_info), K(is_compatible));
     }
   }
-
   if (OB_FAIL(ret)) {
   } else {
     ObDMLSqlSplicer dml_splicer;
     if (OB_FAIL(dml_splicer.add_pk_column("tenant_id", ls_info.tenant_id_))
       || OB_FAIL(dml_splicer.add_pk_column("ls_id", ls_info.ls_id_.id()))
-      || OB_FAIL(dml_splicer.add_column("status", ls_status_to_str(ls_info.status_)))
+      || OB_FAIL(dml_splicer.add_column("status", ls_status_to_str(ls_info.status_))) // createing
       || OB_FAIL(dml_splicer.add_column("ls_group_id", ls_info.ls_group_id_))
       || OB_FAIL(dml_splicer.add_column("unit_group_id", ls_info.unit_group_id_))
       || OB_FAIL(dml_splicer.add_column("primary_zone", ls_info.primary_zone_.ptr()))) {
@@ -217,7 +233,7 @@ int ObLSStatusOperator::create_new_ls(const ObLSStatusInfo &ls_info,
       LOG_WARN("add flag column failed", KR(ret), K(ls_info), K(flag_str));
     } else if (OB_FAIL(dml_splicer.splice_insert_sql(table_name, sql))) {
       LOG_WARN("fail to splice insert sql", KR(ret), K(sql), K(ls_info), K(flag_str));
-    } else if (OB_FAIL(exec_write(ls_info.tenant_id_, sql, this, trans))) {
+    } else if (OB_FAIL(exec_write(/*ls_info.tenant_id_*/ OB_SYS_TENANT_ID, sql, this, trans))) {
       LOG_WARN("failed to exec write", KR(ret), K(ls_info), K(sql));
     } else if (ls_info.ls_id_.is_sys_ls()) {
       LOG_INFO("sys ls no need update max ls id", KR(ret), K(ls_info));
@@ -344,6 +360,9 @@ int ObLSStatusOperator::update_ls_status(
         ret = OB_SUCC(ret) ? tmp_ret : ret;
       }
     }
+  }
+  if (new_status == OB_LS_NORMAL) {
+    LOG_INFO("ls status change to NORMAL");
   }
   return ret;
 }
@@ -1014,10 +1033,10 @@ int ObLSStatusOperator::get_ls_status_(const uint64_t tenant_id,
   } else if (OB_FAIL(sql.assign_fmt("SELECT * FROM %s where ls_id = %ld and tenant_id = %lu",
                                     OB_ALL_LS_STATUS_TNAME, id.id(), tenant_id))) {
     LOG_WARN("failed to assign sql", KR(ret), K(sql));
-  } else if (OB_FAIL(inner_get_ls_status_(sql, get_exec_tenant_id(tenant_id), need_member_list,
+  } else if (OB_FAIL(inner_get_ls_status_(sql, /*get_exec_tenant_id(tenant_id)*/ OB_SYS_TENANT_ID, need_member_list,
                                           client, member_list, status_info, arb_member, learner_list))) {
     LOG_WARN("fail to inner get ls status info", KR(ret), K(sql), K(tenant_id), "exec_tenant_id",
-             get_exec_tenant_id(tenant_id), K(need_member_list));
+             /*get_exec_tenant_id(tenant_id)*/ OB_SYS_TENANT_ID, K(need_member_list));
   }
   return ret;
 }

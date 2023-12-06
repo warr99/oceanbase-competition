@@ -181,7 +181,6 @@ int ObAllTenantInfoProxy::init_tenant_info(
 {
   int64_t begin_time = ObTimeUtility::current_time();
   int ret = OB_SUCCESS;
-  const uint64_t exec_tenant_id = gen_meta_tenant_id(tenant_info.get_tenant_id());
   ObSqlString sql;
   int64_t affected_rows = 0;
   ObTimeoutCtx ctx;
@@ -212,8 +211,8 @@ int ObAllTenantInfoProxy::init_tenant_info(
                  tenant_info.get_log_mode().to_str(),
                  tenant_info.get_max_ls_id().id()))) {
     LOG_WARN("failed to assign sql", KR(ret), K(tenant_info), K(sql));
-  } else if (OB_FAIL(proxy->write(exec_tenant_id, sql.ptr(), affected_rows))) {
-    LOG_WARN("failed to execute sql", KR(ret), K(exec_tenant_id), K(sql));
+  } else if (OB_FAIL(proxy->write(OB_SYS_TENANT_ID, sql.ptr(), affected_rows))) {
+    LOG_WARN("failed to execute sql", KR(ret), K(OB_SYS_TENANT_ID), K(sql));
   } else if (!is_single_row(affected_rows)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("expect updating one row", KR(ret), K(affected_rows), K(sql));
@@ -341,7 +340,6 @@ int ObAllTenantInfoProxy::load_tenant_info(const uint64_t tenant_id,
   return ret;
 }
 
-
 int ObAllTenantInfoProxy::load_tenant_info(const uint64_t tenant_id,
                                            ObISQLClient *proxy,
                                            const bool for_update,
@@ -374,6 +372,7 @@ int ObAllTenantInfoProxy::load_tenant_info(const uint64_t tenant_id,
         LOG_WARN("failed to get tenant max ls id", KR(ret), K(tenant_id));
       } else {
         tenant_info.set_max_ls_id(max_ls_id);
+        LOG_INFO("change tenant_info", "max_ls_id", max_ls_id);
       }
     }
   }
@@ -397,7 +396,7 @@ int ObAllTenantInfoProxy::load_pure_tenant_info_(const uint64_t tenant_id,
     LOG_WARN("invalid argument", KR(ret), K(tenant_id));
   } else {
     ObSqlString sql;
-    uint64_t exec_tenant_id = gen_meta_tenant_id(tenant_id);
+    uint64_t exec_tenant_id = gen_meta_tenant_id(OB_SYS_TENANT_ID);
     if (OB_FAIL(rootserver::ObRootUtils::get_rs_default_timeout_ctx(ctx))) {
       LOG_WARN("fail to get timeout ctx", KR(ret), K(ctx));
     } else if (OB_FAIL(sql.assign_fmt("select ORA_ROWSCN, * from %s where tenant_id = %lu ",
@@ -540,7 +539,7 @@ int ObAllTenantInfoProxy::update_tenant_max_ls_id(
     ObMySQLTransaction &trans, const bool for_upgrade)
 {
   int ret = OB_SUCCESS;
-  const uint64_t exec_tenant_id = gen_meta_tenant_id(tenant_id);
+  const uint64_t exec_tenant_id = gen_meta_tenant_id(OB_SYS_TENANT_ID);
   ObSqlString sql;
   int64_t affected_rows = 0;
   int64_t ora_rowscn = 0;//no used

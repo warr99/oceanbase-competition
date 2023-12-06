@@ -49,7 +49,7 @@ int ObLsElectionReferenceInfoOperator::create_new_ls(const ObLSStatusInfo &ls_in
             OB_ALL_LS_ELECTION_REFERENCE_INFO_TNAME, ls_info.tenant_id_,
             ls_info.ls_id_.id(), zone_priority.ptr(), "0.0.0.0:0", ""))) {
       OB_LOG(WARN, "failed to assing sql", KR(ret), K(ls_info), K(create_ls_scn));
-    } else if (OB_FAIL(exec_write(ls_info.tenant_id_, sql, this, trans))) {
+    } else if (OB_FAIL(exec_write(/*ls_info.tenant_id_*/ OB_SYS_TENANT_ID, sql, this, trans))) {
       OB_LOG(WARN, "failed to exec write", KR(ret), K(ls_info), K(sql));
     }
     OB_LOG(INFO, "[LS_ELECTION] create new ls", KR(ret), K(ls_info), K(create_ls_scn));

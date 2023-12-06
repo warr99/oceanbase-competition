@@ -204,6 +204,7 @@ private:
 
 class ObLSServiceHelper
 {
+friend ObPrimaryLSService;
 public:
   ObLSServiceHelper() {};
   virtual ~ObLSServiceHelper() {};
@@ -253,6 +254,10 @@ public:
   static int wait_all_tenants_user_ls_sync_scn(common::hash::ObHashMap<uint64_t, share::SCN> &tenants_sys_ls_target_scn);
 private:
   static int check_if_need_wait_user_ls_sync_scn_(const uint64_t tenant_id, const share::SCN &sys_ls_target_scn);
+  static int process_status_to_steady_(
+      const ObLSStatusMachineParameter &status_machine,
+      const share::ObTenantSwitchoverStatus &working_sw_status,
+      ObTenantLSInfo& tenant_ls_info);
   static int revision_to_equal_status_(
       const ObLSStatusMachineParameter &status_machine,
       const share::ObTenantSwitchoverStatus &working_sw_status,
