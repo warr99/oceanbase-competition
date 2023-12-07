@@ -413,6 +413,7 @@ public:
         OCCAM_LOG(ERROR, "fail to reschedule task", KR(ret), K(*this));
       } else {
         task_->expected_run_ts_us_ = ObClockGenerator::getRealClock() + us;
+        OCCAM_LOG(INFO, "set task expected run time", K(us), K(task_->expected_run_ts_us_));
       }
     }
     return ret;

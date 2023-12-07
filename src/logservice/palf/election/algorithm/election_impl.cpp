@@ -225,7 +225,7 @@ int ElectionImpl::handle_message(const ElectionPrepareRequestMsg &msg)
   int ret = common::OB_SUCCESS;
   bool need_register_devote_task = false;
   {
-    LOG_NONE(INFO, "start handle prepare req");
+    LOG_NONE(INFO, "2.0 start handle prepare req");
     LockGuard lock_guard(lock_);
     handle_message_base_(msg);
     msg_counter_.add_received_count(msg);
@@ -252,7 +252,7 @@ int ElectionImpl::handle_message(const ElectionAcceptRequestMsg &msg)
   int ret = common::OB_SUCCESS;
   int64_t us_to_expired = 0;
   {
-    LOG_NONE(INFO, "start handle accept req");
+    LOG_NONE(INFO, "4.0 start handle accept req");
     LockGuard lock_guard(lock_);
     handle_message_base_(msg);
     msg_counter_.add_received_count(msg);
@@ -278,28 +278,34 @@ int ElectionImpl::handle_message(const ElectionAcceptRequestMsg &msg)
 
 int ElectionImpl::handle_message(const ElectionPrepareResponseMsg &msg)
 {
+  #define PRINT_WRAPPER KR(ret), K(msg)
+  int ret = OB_SUCCESS;
+  LOG_NONE(INFO, "3.0 start handle prepare resp");
   const_cast<ElectionPrepareResponseMsg &>(msg).set_process_ts();
   ELECT_TIME_GUARD(500_ms);
-  int ret = OB_SUCCESS;
   LockGuard lock_guard(lock_);
   handle_message_base_(msg);
   msg_counter_.add_received_count(msg);
   CHECK_ELECTION_INIT_AND_START();
   proposer_.on_prepare_response(msg);
   return ret;
+  #undef PRINT_WRAPPER
 }
 
 int ElectionImpl::handle_message(const ElectionAcceptResponseMsg &msg)
 {
+  #define PRINT_WRAPPER KR(ret), K(msg)
+  int ret = OB_SUCCESS;
+  LOG_NONE(INFO, "5.0 start handle accept resp");
   const_cast<ElectionAcceptResponseMsg &>(msg).set_process_ts();
   ELECT_TIME_GUARD(500_ms);
-  int ret = OB_SUCCESS;
   LockGuard lock_guard(lock_);
   handle_message_base_(msg);
   msg_counter_.add_received_count(msg);
   CHECK_ELECTION_INIT_AND_START();
   proposer_.on_accept_response(msg);
   return ret;
+  #undef PRINT_WRAPPER
 }
 
 int ElectionImpl::handle_message(const ElectionChangeLeaderMsg &msg)
