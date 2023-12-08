@@ -138,7 +138,7 @@ int ElectionAcceptor::start()
     ELECT_TIME_GUARD(500_ms);
     #define PRINT_WRAPPER KR(ret), K(*this)
     int ret = OB_SUCCESS;
-    
+    ELECT_LOG(INFO, "run timed task");
     LockGuard lock_guard(p_election_->lock_);
     // 周期性打印选举的状态
     if (ObClockGenerator::getCurrentTime() > last_dump_acceptor_info_ts_ + 3_s) {
@@ -172,7 +172,7 @@ int ElectionAcceptor::start()
       if (last_record_lease_valid_state && !lease_valid_state) {// 这个定时任务可能是被延迟致lease到期时触发的，为了在lease到期的第一时间投票
         can_vote = true;
         LOG_ELECT_LEADER(INFO, "vote when lease expired");
-      } else if (ObClockGenerator::getCurrentTime() - last_time_window_open_ts_ >= CALCULATE_TIME_WINDOW_SPAN_TS()) {
+      } else if (ObClockGenerator::getCurrentTime() - last_time_window_open_ts_ >= 10_ms) {
         can_vote = true;
       } else {
         LOG_ELECT_LEADER(INFO, "can't vote now", K(last_record_lease_valid_state),
@@ -191,6 +191,7 @@ int ElectionAcceptor::start()
           }
           // 1.3 构造prepare ok消息
           prepare_res_accept.set_accepted(ballot_number_, lease_);
+          LOG_ELECT_LEADER(INFO, "2.2 send prepare res accept");
           if (CLICK_FAIL(p_election_->send_(prepare_res_accept))) {
             LOG_ELECT_LEADER(ERROR, "fail to send prepare ok", K(prepare_res_accept));
           } else {
@@ -235,7 +236,7 @@ void ElectionAcceptor::on_prepare_request(const ElectionPrepareRequestMsg &prepa
   // CHECK_SILENCE();// 启动后的要维持一段静默时间，acceptor假装看不到任何消息，以维护lease的正确语义
   int ret = OB_SUCCESS;
   LogPhase phase = (prepare_req.get_role() == common::ObRole::FOLLOWER ? LogPhase::ELECT_LEADER : LogPhase::RENEW_LEASE);
-  LOG_PHASE(INFO, phase, "handle prepare request");
+  LOG_PHASE(INFO, phase, "2.1 handle prepare request as acceptor");
   if (OB_UNLIKELY(false == p_election_->is_member_list_valid_())) {
     LOG_PHASE(INFO, phase, "ignore prepare when member_list is invalid");
   } else if (prepare_req.get_membership_version() < p_election_->get_membership_version_()) {
@@ -272,7 +273,7 @@ void ElectionAcceptor::on_prepare_request(const ElectionPrepareRequestMsg &prepa
         if (!lease_.is_expired()) {// 当前Lease有效时，如果有效的时间超过一个最大单程消息延迟，则窗口关闭时机以Lease到期时间为准
           timewindow_span = std::max(lease_.get_lease_end_ts() - get_monotonic_ts(), CALCULATE_TIME_WINDOW_SPAN_TS() / 2);
         } else {// 否则视为普通的无主选举流程，窗口需要覆盖两个最大单程消息延迟
-          timewindow_span = CALCULATE_TIME_WINDOW_SPAN_TS();
+          timewindow_span = 10_ms;
         }
         if (CLICK_FAIL(time_window_task_handle_.reschedule_after(timewindow_span))) {
           LOG_PHASE(ERROR, phase, "open time window failed");
