@@ -172,7 +172,7 @@ int ElectionAcceptor::start()
       if (last_record_lease_valid_state && !lease_valid_state) {// 这个定时任务可能是被延迟致lease到期时触发的，为了在lease到期的第一时间投票
         can_vote = true;
         LOG_ELECT_LEADER(INFO, "vote when lease expired");
-      } else if (ObClockGenerator::getCurrentTime() - last_time_window_open_ts_ >= 1) {
+      } else if (currTime - last_time_window_open_ts_ >= 10_ms) {
         can_vote = true;
       } else {
         LOG_ELECT_LEADER(INFO, "can't vote now", K(last_record_lease_valid_state),
@@ -273,7 +273,7 @@ void ElectionAcceptor::on_prepare_request(const ElectionPrepareRequestMsg &prepa
         if (!lease_.is_expired()) {// 当前Lease有效时，如果有效的时间超过一个最大单程消息延迟，则窗口关闭时机以Lease到期时间为准
           timewindow_span = std::max(lease_.get_lease_end_ts() - get_monotonic_ts(), CALCULATE_TIME_WINDOW_SPAN_TS() / 2);
         } else {// 否则视为普通的无主选举流程，窗口需要覆盖两个最大单程消息延迟
-          timewindow_span = 1_s;
+          timewindow_span = 10_ms;
         }
         if (CLICK_FAIL(time_window_task_handle_.reschedule_after(timewindow_span))) {
           LOG_PHASE(ERROR, phase, "open time window failed");
