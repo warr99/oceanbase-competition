@@ -172,7 +172,7 @@ int ElectionAcceptor::start()
       if (last_record_lease_valid_state && !lease_valid_state) {// 这个定时任务可能是被延迟致lease到期时触发的，为了在lease到期的第一时间投票
         can_vote = true;
         LOG_ELECT_LEADER(INFO, "vote when lease expired");
-      } else if (currTime - last_time_window_open_ts_ >= 10_ms) {
+      } else if (ObClockGenerator::getCurrentTime() - last_time_window_open_ts_ >= 10_ms) {
         can_vote = true;
       } else {
         LOG_ELECT_LEADER(INFO, "can't vote now", K(last_record_lease_valid_state),
