@@ -58,7 +58,7 @@ def __gen_perf(cluster_home_path:str, sleep_time:int) -> None:
         _logger.info('start to gen perf.data, pid=%s, sleep=%ds', pid, sleep_time)
         # 定义一个新的函数来运行 subprocess.run
         def run_perf_command():
-            subprocess.run(f'perf record -F 99 -p {pid} -g -o /home/ChenXr/FlameGraph/perf.data -- sleep {sleep_time}', shell=True)
+            subprocess.run(f'perf record -F 99 -p {pid} -g -o /home/YaoJt/FlameGraph/perf.data -- sleep {sleep_time}', shell=True)
 
 
         # 创建一个线程并启动它
@@ -106,7 +106,7 @@ def __create_tenant(cursor, *,
     _logger.info(f'execute tenant create: {create_tenant_sql}')   
     tenant_create_begin = datetime.datetime.now()   
     if args.perf_create_tenant:
-        __gen_perf(home_abs_path, 24)
+        __gen_perf(home_abs_path, 15)
     cursor.execute(create_tenant_sql)
     tenant_create_end = datetime.datetime.now()       
     _logger.info('execute tenant create done %s ms' % ((tenant_create_end - tenant_create_begin).total_seconds() * 1000))
@@ -172,7 +172,7 @@ if __name__ == "__main__":
     _logger.info('deploy done. returncode=%d', shell_result.returncode)
 
     if args.perf_all:
-        __gen_perf(home_abs_path, 42)
+        __gen_perf(home_abs_path, 27)
 
     time.sleep(2)
     try:

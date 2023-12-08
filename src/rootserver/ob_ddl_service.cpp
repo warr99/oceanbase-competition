@@ -22088,14 +22088,20 @@ int ObDDLService::create_tenant(
       }
     }
   } // end HEAP_VARS_4
-  if (FAILEDx(create_tenant_end(meta_tenant_id))) {
+  if (!tenant_role.is_primary() && FAILEDx(create_tenant_end(user_tenant_id))) {
+    LOG_WARN("failed to create tenant end", KR(ret), K(user_tenant_id));
+  }
+  if (OB_SUCC(ret) && OB_FAIL(create_tenant_end(meta_tenant_id))) {
+    LOG_WARN("failed to create tenant end", KR(ret), K(meta_tenant_id));
+  }
+  /*if (FAILEDx(create_tenant_end(meta_tenant_id))) {
     LOG_WARN("failed to create tenant end", KR(ret), K(meta_tenant_id));
   } else if (!tenant_role.is_primary()) {
     LOG_INFO("restore or standby user tenant cannot create end", K(tenant_role),
         K(user_tenant_id), K(arg));
   } else if (OB_FAIL(create_tenant_end(user_tenant_id))) {
     LOG_WARN("failed to create tenant end", KR(ret), K(user_tenant_id));
-  }
+  }*/
   if (OB_SUCC(ret)) {
     if (OB_FAIL(publish_schema(OB_SYS_TENANT_ID))) {
       LOG_WARN("publish schema failed", K(ret));
@@ -23072,6 +23078,7 @@ int ObDDLService::create_tenant_sys_tablets(
         }
       }
     } // end for
+    LOG_INFO("start to execute create", KR(ret), "cost", ObTimeUtility::fast_current_time() - start_time);
     if (FAILEDx(table_creator.execute())) {
       LOG_WARN("fail to execute creator", KR(ret), K(tenant_id));
     } else {
