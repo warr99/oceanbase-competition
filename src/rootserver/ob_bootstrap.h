@@ -249,7 +249,7 @@ private:
       } else { \
         major_step = 2; \
       } \
-      int64_t end_ts = ObTimeUtility::current_time(); \
+      int64_t end_ts = ObTimeUtility::fast_current_time(); \
       int64_t cost = end_ts - begin_ts_; \
       begin_ts_ = end_ts ; \
       if (OB_SUCC(ret)) { \

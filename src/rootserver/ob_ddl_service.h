@@ -2035,6 +2035,7 @@ private:
       const share::ObTenantRole &tenant_role,
       const share::SCN &recovery_until_scn,
       common::ObIArray<share::schema::ObTableSchema> &tables,
+      common::ObIArray<int64_t> &divide_index,
       share::schema::ObSysVariableSchema &sys_variable,
       const common::ObIArray<common::ObConfigPairs> &init_configs,
       bool is_creating_standby,
@@ -2051,7 +2052,8 @@ private:
       uint64_t tenant_id,
       ObDDLOperator &ddl_operator,
       ObMySQLTransaction &trans,
-      common::ObIArray<share::schema::ObTableSchema> &tables);
+      common::ObIArray<share::schema::ObTableSchema> &tables,
+      common::ObIArray<int64_t> &divide_index);
   int try_force_drop_tenant(const share::schema::ObTenantSchema &tenant_schema);
 
   int handle_security_audit_in_trans(const share::schema::ObSAuditSchema &audit_schema,

@@ -442,7 +442,8 @@ int ObSchemaUtils::add_sys_table_lob_aux_table(
 // construct inner table schemas in tenant space
 int ObSchemaUtils::construct_inner_table_schemas(
     const uint64_t tenant_id,
-    ObIArray<ObTableSchema> &tables)
+    ObIArray<ObTableSchema> &tables,
+    ObIArray<int64_t> &divide_index)
 {
   int ret = OB_SUCCESS;
   if (is_sys_tenant(tenant_id)) {
@@ -456,6 +457,9 @@ int ObSchemaUtils::construct_inner_table_schemas(
       virtual_table_schema_creators,
       sys_view_schema_creators
     };
+
+    divide_index.reset();
+    divide_index.push_back(0);
     HEAP_VARS_2((ObTableSchema, table_schema), (ObTableSchema, data_schema)) {
       for (int64_t i = 0; OB_SUCC(ret) && i < ARRAYSIZEOF(creator_ptr_arrays); ++i) {
         for (const schema_create_func *creator_ptr = creator_ptr_arrays[i];
@@ -486,9 +490,16 @@ int ObSchemaUtils::construct_inner_table_schemas(
               LOG_WARN("fail to add lob table to sys table", KR(ret), K(data_table_id));
             }
           } // end lob aux table
+          if (tables.count() - divide_index.at(divide_index.count() - 1) >= 20) {
+            divide_index.push_back(tables.count());
+          }
         }
       }
     }
+    if (divide_index.at(divide_index.count() - 1) != tables.count()) {
+      divide_index.push_back(tables.count());
+    }
+    LOG_INFO("let me see divide index", K(divide_index));
   }
   return ret;
 }

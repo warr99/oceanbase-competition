@@ -243,7 +243,7 @@ int ObPreBootstrap::prepare_bootstrap(ObAddr &master_rs)
   int ret = OB_SUCCESS;
   bool is_empty = false;
   bool match = false;
-  begin_ts_ = ObTimeUtility::current_time();
+  begin_ts_ = ObTimeUtility::fast_current_time();
   if (OB_FAIL(check_inner_stat())) {
     LOG_WARN("check_inner_stat failed", KR(ret));
   } else if (OB_FAIL(check_bootstrap_rs_list(rs_list_))) {
@@ -557,7 +557,7 @@ int ObBootstrap::execute_bootstrap(rootserver::ObServerZoneOpService &server_zon
   bool already_bootstrap = true;
   ObSArray<ObTableSchema> table_schemas;
   ObSArray<int> table_schemas_divide_index;
-  begin_ts_ = ObTimeUtility::current_time();
+  begin_ts_ = ObTimeUtility::fast_current_time();
 
   BOOTSTRAP_LOG(INFO, "start do execute_bootstrap");
 
@@ -831,9 +831,9 @@ int ObBootstrap::add_sys_table_lob_aux_table(
       } else if (OB_FAIL(get_sys_table_lob_aux_schema(data_table_id, lob_meta_schema, lob_piece_schema))) {
         LOG_WARN("fail to get sys table lob aux schema", KR(ret), K(data_table_id));
       } else if (OB_FAIL(add_sys_table_lob_aux_table(lob_meta_schema.get_table_id(), table_schemas))) {
-        LOG_WARN("fail to add sys table lob aux table from lob meta schema");
+        LOG_WARN("fail to get sys table lob aux schema from lob meta schema", KR(ret));
       } else if (OB_FAIL(add_sys_table_lob_aux_table(lob_piece_schema.get_table_id(), table_schemas))) {
-        LOG_WARN("fail to add sys table lob aux table from lob piece schema");
+        LOG_WARN("fail to get sys table lob aux schema from lob piece schema", KR(ret));
       } else if (OB_FAIL(table_schemas.push_back(lob_meta_schema))) {
         LOG_WARN("fail to push lob meta into schemas", KR(ret), K(data_table_id));
       } else if (OB_FAIL(table_schemas.push_back(lob_piece_schema))) {
@@ -900,12 +900,15 @@ int ObBootstrap::construct_all_schema(
               LOG_WARN("push_back failed", KR(ret), K(table_schema));
             }
           }
-          if (divide_index.at(divide_index.count() - 1) != table_schemas.count()) {
+          if (table_schemas.count() - divide_index.at(divide_index.count() - 1) >= 40) {
             divide_index.push_back(table_schemas.count());
           }
         }
         LOG_INFO("one round of construct schema finished", "count", table_schemas.count() - start);
       }
+    }
+    if (divide_index.at(divide_index.count() - 1) != table_schemas.count()) {
+      divide_index.push_back(table_schemas.count());
     }
   }
   BOOTSTRAP_CHECK_SUCCESS();
@@ -1030,14 +1033,15 @@ int ObBootstrap::parallel_create_table_schema(
         int end = divide_index.at(index + 1);
         int retry_times = 1;
         int ret = OB_SUCCESS;
+        LOG_INFO("start to create schema batch", K(begin), K(end), "count", end - begin);
         while (OB_SUCC(ret)) {
           if (OB_FAIL(batch_create_schema(ddl_service, table_schemas, begin, end))) {
-            LOG_WARN("batch create schema failed", K(ret), K(begin), K(end), "table count", end - begin);
+            LOG_WARN("batch create schema failed", KR(ret), K(begin), K(end), "table count", end - begin);
             if (retry_times <= MAX_RETRY_TIMES) {
-              retry_times++;
-              ret = OB_SUCCESS;
               LOG_INFO("schema error while create table, need retry", KR(ret), K(retry_times));
-              usleep(500 * 1000L); // 500ms
+              ret = OB_SUCCESS;
+              retry_times++;
+              usleep(100 * 1000L); // 100ms
             }
           } else {
             ATOMIC_AAF(&finish_cnt, end - begin);
