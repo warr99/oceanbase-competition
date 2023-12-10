@@ -5411,9 +5411,6 @@ int ObServerSchemaService::refresh_full_schema_bootstrap(
         non_sys_schemas.push_back(table_schema);
       }
     }
-    // LOG_INFO("core_schemas", "count", core_schemas.count());
-    // LOG_INFO("sys_schemas", "count", sys_schemas.count());
-    // LOG_INFO("non_sys_schemas", "count", non_sys_schemas.count());
     while (OB_SUCC(ret)) {
       int64_t retry_count = 0;
       bool core_schema_change = true;

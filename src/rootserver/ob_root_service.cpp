@@ -1976,7 +1976,7 @@ int ObRootService::execute_bootstrap(const obrpc::ObBootstrapArg &arg)
     ObGlobalStatProxy global_proxy(sql_proxy_, OB_SYS_TENANT_ID);
     ObArray<ObAddr> self_addr;
     if (OB_FAIL(ret)) {
-    } else if (OB_FAIL(do_restart())) {
+    } else if (OB_FAIL(do_restart(true))) {
       LOG_WARN("do restart task failed", K(ret));
     } else if (OB_FAIL(check_ddl_allowed())) {
       LOG_WARN("fail to check ddl allowed", K(ret));
@@ -4971,15 +4971,17 @@ int ObRootService::init_debug_database()
   return ret;
 }
 
-int ObRootService::do_restart()
+int ObRootService::do_restart(bool after_bootstrap/*=false*/)
 {
   int ret = OB_SUCCESS;
 
   const int64_t tenant_id = OB_SYS_TENANT_ID;
+  int64_t start_get_lock_time = fast_current_time();
+  FLOG_INFO("[ROOTSERVICE_NOTICE] try to get lock for start do_restart");
   SpinWLockGuard rs_list_guard(broadcast_rs_list_lock_);
 
   // NOTE: following log print after lock
-  FLOG_INFO("[ROOTSERVICE_NOTICE] start do_restart");
+  FLOG_INFO("[ROOTSERVICE_NOTICE] start do_restart", "cost", fast_current_time() - start_get_lock_time);
 
   if (!inited_) {
     ret = OB_NOT_INIT;
@@ -4988,7 +4990,7 @@ int ObRootService::do_restart()
     ret = OB_NOT_MASTER;
     FLOG_WARN("not master", KR(ret));
   }
-
+  int64_t start_time = fast_current_time();
   // renew master rootservice, ignore error
   if (OB_SUCC(ret)) {
     int tmp_ret = rs_mgr_->renew_master_rootserver();
@@ -4996,22 +4998,25 @@ int ObRootService::do_restart()
       FLOG_WARN("renew master rootservice failed", KR(tmp_ret));
     }
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   //fetch root partition info
+  start_time = fast_current_time();
   if (FAILEDx(fetch_sys_tenant_ls_info())) {
     FLOG_WARN("fetch root partition info failed", KR(ret));
   } else {
     FLOG_INFO("fetch root partition info succeed", KR(ret));
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   // broadcast root server address, ignore error
-  if (OB_SUCC(ret)) {
+  start_time = fast_current_time();
+  if (!after_bootstrap && OB_SUCC(ret)) {
     int tmp_ret = update_rslist();
     if (OB_SUCCESS != tmp_ret) {
       FLOG_WARN("failed to update rslist but ignored", KR(tmp_ret));
     }
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
+  start_time = fast_current_time();
   if (OB_SUCC(ret)) {
     //standby cluster trigger load_refresh_schema_status by heartbeat.
     //due to switchover, primary cluster need to load schema_status too.
@@ -5025,10 +5030,11 @@ int ObRootService::do_restart()
       FLOG_INFO("load schema status success");
     }
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   bool load_frozen_status = true;
   const bool refresh_server_need_retry = false; // no need retry
   // try fast recover
+  start_time = fast_current_time();
   if (OB_SUCC(ret)) {
     int tmp_ret = refresh_server(load_frozen_status, refresh_server_need_retry);
     if (OB_SUCCESS != tmp_ret) {
@@ -5039,6 +5045,8 @@ int ObRootService::do_restart()
       FLOG_WARN("refresh schema failed", KR(tmp_ret), K(load_frozen_status));
     }
   }
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
+  start_time = fast_current_time();
   load_frozen_status = false;
   // refresh schema
   if (FAILEDx(refresh_schema(load_frozen_status))) {
@@ -5046,35 +5054,39 @@ int ObRootService::do_restart()
   } else {
     FLOG_INFO("success to refresh schema", K(load_frozen_status));
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   // refresh server manager
+  start_time = fast_current_time();
   if (FAILEDx(refresh_server(load_frozen_status, refresh_server_need_retry))) {
     FLOG_WARN("refresh server failed", KR(ret), K(load_frozen_status));
   } else {
     FLOG_INFO("success to refresh server", K(load_frozen_status));
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   // add other reload logic here
+  start_time = fast_current_time();
   if (FAILEDx(zone_manager_.reload())) {
     FLOG_WARN("zone_manager_ reload failed", KR(ret));
   } else {
     FLOG_INFO("success to reload zone_manager_");
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   // start timer tasks
+  start_time = fast_current_time();
   if (FAILEDx(start_timer_tasks())) {
     FLOG_WARN("start timer tasks failed", KR(ret));
   } else {
     FLOG_INFO("success to start timer tasks");
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
+  start_time = fast_current_time();
   DEBUG_SYNC(BEFORE_UNIT_MANAGER_LOAD);
   if (FAILEDx(unit_manager_.load())) {
     FLOG_WARN("unit_manager_ load failed", KR(ret));
   } else {
     FLOG_INFO("load unit_manager success");
   }
-
+  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   /*
    * FIXME: wanhong.wwh: need re-implement
   if (OB_SUCC(ret)) {
@@ -5086,7 +5098,6 @@ int ObRootService::do_restart()
     }
   }
   */
-
   if (FAILEDx(schema_history_recycler_.start())) {
     FLOG_WARN("schema_history_recycler start failed", KR(ret));
   } else {
@@ -5119,6 +5130,11 @@ int ObRootService::do_restart()
 
   // broadcast root server address again, this task must be in the end part of do_restart,
   // because system may work properly without it.
+  // if (OB_FAIL(submit_update_rslist_task(true))) {
+  //   FLOG_WARN("submit_update_rslist_task failed", KR(ret));
+  // } else {
+  //   FLOG_INFO("submit_update_rslist_task succeed");
+  // }
   if (FAILEDx(update_rslist())) {
     FLOG_WARN("broadcast root address failed but ignored", KR(ret));
     // it's ok ret be overwritten, update_rslist_task will retry until succeed
@@ -5193,7 +5209,7 @@ int ObRootService::do_restart()
   } else {
     FLOG_INFO("success to start disaster recovery task manager");
   }
-
+  start_time = fast_current_time();
   if (FAILEDx(rs_status_.set_rs_status(status::FULL_SERVICE))) {
     FLOG_WARN("fail to set rs status", KR(ret));
   } else {
@@ -5216,7 +5232,7 @@ int ObRootService::do_restart()
     update_fail_count(ret);
   }
 
-  FLOG_INFO("[ROOTSERVICE_NOTICE] finish do_restart", KR(ret));
+  FLOG_INFO("[ROOTSERVICE_NOTICE] finish do_restart", KR(ret), "cost", fast_current_time() - start_time);
   return ret;
 }
 

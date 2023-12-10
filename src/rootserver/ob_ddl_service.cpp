@@ -23347,12 +23347,7 @@ int ObDDLService::create_sys_table_schemas(
   } else {
     // persist __all_core_table's schema in inner table, which is only used for sys views.
     const int64_t begin_create = ObTimeUtility::current_time();
-    /*if (OB_FAIL(create_sys_table_batch(tenant_id, *this, tables, 0, tables.count()))) {
-      LOG_WARN("batch create schema failed", KR(ret), "table count", tables.count());
-    }*/
 
-    // int64_t begin = 0;
-    // int64_t batch_count = tables.count() / 20;
     const int THREAD_COUNT = 12;
     const int64_t MAX_RETRY_TIMES = 10;
     int64_t finish_cnt = 0;

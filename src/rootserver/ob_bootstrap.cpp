@@ -269,7 +269,6 @@ int ObPreBootstrap::prepare_bootstrap(ObAddr &master_rs)
   } else if (OB_FAIL(wait_elect_ls(master_rs))) {
     LOG_WARN("failed to wait elect master partition", KR(ret));
   }
-  BOOTSTRAP_CHECK_SUCCESS();
   return ret;
 }
 
@@ -558,7 +557,7 @@ int ObBootstrap::execute_bootstrap(rootserver::ObServerZoneOpService &server_zon
   ObSArray<ObTableSchema> table_schemas;
   ObSArray<int> table_schemas_divide_index;
   begin_ts_ = ObTimeUtility::fast_current_time();
-
+  int64_t start_time = begin_ts_;
   BOOTSTRAP_LOG(INFO, "start do execute_bootstrap");
 
   if (OB_FAIL(check_inner_stat())) {
@@ -605,7 +604,7 @@ int ObBootstrap::execute_bootstrap(rootserver::ObServerZoneOpService &server_zon
     ROOTSERVICE_EVENT_ADD("bootstrap", "bootstrap_succeed");
   }
 
-  BOOTSTRAP_CHECK_SUCCESS();
+  LOG_INFO("bootstrap execute finished", KR(ret), "cost", ObTimeUtility::fast_current_time() - start_time);
   return ret;
 }
 
@@ -900,7 +899,7 @@ int ObBootstrap::construct_all_schema(
               LOG_WARN("push_back failed", KR(ret), K(table_schema));
             }
           }
-          if (table_schemas.count() - divide_index.at(divide_index.count() - 1) >= 40) {
+          if (table_schemas.count() - divide_index.at(divide_index.count() - 1) >= 20) {
             divide_index.push_back(table_schemas.count());
           }
         }

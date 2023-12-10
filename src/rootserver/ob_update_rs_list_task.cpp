@@ -109,7 +109,7 @@ int ObUpdateRsListTask::process_without_lock()
   ObSEArray<ObRootAddr, ObLSReplica::DEFAULT_REPLICA_COUNT> new_rs_list;
   ObSEArray<ObRootAddr, ObLSReplica::DEFAULT_REPLICA_COUNT> new_readonly_rs_list;
   const common::ObClusterRole cluster_role = ObClusterInfoGetter::get_cluster_role();
-
+  int64_t start_time = ObTimeUtility::current_time();
   if (!inited_) {
     ret = OB_NOT_INIT;
     LOG_WARN("not init", K(ret));
@@ -124,6 +124,7 @@ int ObUpdateRsListTask::process_without_lock()
     LOG_WARN("cluster type is invalid", K(ret), K(cluster_role));
   } else {
     int64_t timestamp = ObTimeUtility::current_time();
+    LOG_INFO("get rs list success", "cost", timestamp - start_time);
     if (force_update_) {
       inner_need_update = true;
       if (OB_FAIL(root_addr_agent_->store(new_rs_list, new_readonly_rs_list, inner_need_update,
@@ -170,9 +171,9 @@ int ObUpdateRsListTask::process()
   if (!ObRootServiceRoleChecker::is_rootserver()) {
     ret = OB_NOT_MASTER;
     LOG_WARN("not master", K(ret));
-  } else if (OB_FAIL(process_without_lock())) {
+  } /*else if (OB_FAIL(process_without_lock())) {
     LOG_WARN("task process failed", K(ret));
-  }
+  }*/
   if (OB_SUCC(ret)) {
     ObUpdateRsListTask::unlock();
   } else {

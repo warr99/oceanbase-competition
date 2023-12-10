@@ -429,6 +429,10 @@ int ObSchemaUtils::add_sys_table_lob_aux_table(
       } else if (OB_FAIL(ObSchemaUtils::construct_tenant_space_full_table(
                   tenant_id, lob_piece_schema))) {
         LOG_WARN("fail to construct tenant space table", KR(ret), K(tenant_id));
+      } else if (OB_FAIL(add_sys_table_lob_aux_table(tenant_id, lob_meta_schema.get_table_id(), table_schemas))) {
+        LOG_WARN("fail to add table schema from lob meta schema", KR(ret), K(lob_meta_schema));
+      } else if (OB_FAIL(add_sys_table_lob_aux_table(tenant_id, lob_piece_schema.get_table_id(), table_schemas))) {
+        LOG_WARN("fail to add table schema from lob meta schema", KR(ret), K(lob_meta_schema));
       } else if (OB_FAIL(table_schemas.push_back(lob_meta_schema))) {
         LOG_WARN("fail to push back table schema", KR(ret), K(lob_meta_schema));
       } else if (OB_FAIL(table_schemas.push_back(lob_piece_schema))) {
