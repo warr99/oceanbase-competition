@@ -71,6 +71,8 @@ void ObPrimaryLSService::do_work()
   } else if (OB_FAIL(wait_tenant_schema_and_version_ready_(tenant_id_, DATA_VERSION_4_1_0_0))) {
     LOG_WARN("failed to wait tenant schema version ready", KR(ret), K(tenant_id_), K(DATA_CURRENT_VERSION));
   } else {
+    // 我感觉最好的优化方案应该是把下面修改status的逻辑移动到RPC创建完租户后
+    // 只有这样才不需要等待
     LOG_INFO("primary ls service begin running");
     int64_t idle_time_us = 1000 * 1000L;
     int tmp_ret = OB_SUCCESS;
@@ -99,7 +101,6 @@ void ObPrimaryLSService::do_work()
     }// end while
   }
 }
-
 
 int ObPrimaryLSService::process_all_ls(const share::schema::ObTenantSchema &tenant_schema)
 {

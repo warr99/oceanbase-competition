@@ -145,10 +145,15 @@ public:
   virtual int execute_bootstrap(rootserver::ObServerZoneOpService &server_zone_op_service);
   static int create_all_schema(
       ObDDLService &ddl_service,
-      common::ObIArray<share::schema::ObTableSchema> &table_schemas);
-  static int parallel_create_table_schema(ObDDLService &ddl_service, ObIArray<ObTableSchema> &table_schemas);
+      common::ObIArray<share::schema::ObTableSchema> &table_schemas,
+      common::ObIArray<int> &divide_index);
+  static int parallel_create_table_schema(
+      ObDDLService &ddl_service,
+      ObIArray<ObTableSchema> &table_schemas,
+      ObIArray<int> &divide_index);
   int construct_all_schema(
-      common::ObIArray<share::schema::ObTableSchema> &table_schemas);
+      common::ObIArray<share::schema::ObTableSchema> &table_schemas,
+      common::ObIArray<int> &divide_index);
   int sort_schema(const common::ObIArray<share::schema::ObTableSchema> &table_schemas,
                   common::ObIArray<share::schema::ObTableSchema> &sort_table_schemas);
 private:
@@ -244,7 +249,7 @@ private:
       } else { \
         major_step = 2; \
       } \
-      int64_t end_ts = ObTimeUtility::current_time(); \
+      int64_t end_ts = ObTimeUtility::fast_current_time(); \
       int64_t cost = end_ts - begin_ts_; \
       begin_ts_ = end_ts ; \
       if (OB_SUCC(ret)) { \

@@ -243,7 +243,7 @@ int ObPreBootstrap::prepare_bootstrap(ObAddr &master_rs)
   int ret = OB_SUCCESS;
   bool is_empty = false;
   bool match = false;
-  begin_ts_ = ObTimeUtility::current_time();
+  begin_ts_ = ObTimeUtility::fast_current_time();
   if (OB_FAIL(check_inner_stat())) {
     LOG_WARN("check_inner_stat failed", KR(ret));
   } else if (OB_FAIL(check_bootstrap_rs_list(rs_list_))) {
@@ -556,7 +556,8 @@ int ObBootstrap::execute_bootstrap(rootserver::ObServerZoneOpService &server_zon
   int ret = OB_SUCCESS;
   bool already_bootstrap = true;
   ObSArray<ObTableSchema> table_schemas;
-  begin_ts_ = ObTimeUtility::current_time();
+  ObSArray<int> table_schemas_divide_index;
+  begin_ts_ = ObTimeUtility::fast_current_time();
 
   BOOTSTRAP_LOG(INFO, "start do execute_bootstrap");
 
@@ -575,13 +576,13 @@ int ObBootstrap::execute_bootstrap(rootserver::ObServerZoneOpService &server_zon
     LOG_WARN("failed to set in bootstrap", K(ret));
   } else if (OB_FAIL(init_global_stat())) {
     LOG_WARN("failed to init_global_stat", K(ret));
-  } else if (OB_FAIL(construct_all_schema(table_schemas))) {
+  } else if (OB_FAIL(construct_all_schema(table_schemas, table_schemas_divide_index))) {
     LOG_WARN("construct all schema fail", K(ret));
   } else if (OB_FAIL(broadcast_sys_schema(table_schemas))) {
     LOG_WARN("broadcast_sys_schemas failed", K(table_schemas), K(ret));
   } else if (OB_FAIL(create_all_partitions())) {
     LOG_WARN("create all partitions fail", K(ret));
-  } else if (OB_FAIL(create_all_schema(ddl_service_, table_schemas))) {
+  } else if (OB_FAIL(create_all_schema(ddl_service_, table_schemas, table_schemas_divide_index))) {
     LOG_WARN("create_all_schema failed",  K(table_schemas), K(ret));
   }
   BOOTSTRAP_CHECK_SUCCESS_V2("create_all_schema");
@@ -592,7 +593,7 @@ int ObBootstrap::execute_bootstrap(rootserver::ObServerZoneOpService &server_zon
       LOG_WARN("failed to init system data", KR(ret));
     } else if (OB_FAIL(ddl_service_.refresh_schema(OB_SYS_TENANT_ID, NULL, &table_schemas))) {
       LOG_WARN("failed to refresh_schema", K(ret));
-    }
+    } // 去掉refresh_schema, 总体反而变慢了
   }
   BOOTSTRAP_CHECK_SUCCESS_V2("refresh_schema");
 
@@ -829,6 +830,10 @@ int ObBootstrap::add_sys_table_lob_aux_table(
         // do nothing
       } else if (OB_FAIL(get_sys_table_lob_aux_schema(data_table_id, lob_meta_schema, lob_piece_schema))) {
         LOG_WARN("fail to get sys table lob aux schema", KR(ret), K(data_table_id));
+      } else if (OB_FAIL(add_sys_table_lob_aux_table(lob_meta_schema.get_table_id(), table_schemas))) {
+        LOG_WARN("fail to get sys table lob aux schema from lob meta schema", KR(ret));
+      } else if (OB_FAIL(add_sys_table_lob_aux_table(lob_piece_schema.get_table_id(), table_schemas))) {
+        LOG_WARN("fail to get sys table lob aux schema from lob piece schema", KR(ret));
       } else if (OB_FAIL(table_schemas.push_back(lob_meta_schema))) {
         LOG_WARN("fail to push lob meta into schemas", KR(ret), K(data_table_id));
       } else if (OB_FAIL(table_schemas.push_back(lob_piece_schema))) {
@@ -839,7 +844,9 @@ int ObBootstrap::add_sys_table_lob_aux_table(
   return ret;
 }
 
-int ObBootstrap::construct_all_schema(ObIArray<ObTableSchema> &table_schemas)
+int ObBootstrap::construct_all_schema(
+    ObIArray<ObTableSchema> &table_schemas,
+    ObIArray<int> &divide_index)
 {
   int ret = OB_SUCCESS;
   const schema_create_func *creator_ptr_arrays[] = {
@@ -848,6 +855,8 @@ int ObBootstrap::construct_all_schema(ObIArray<ObTableSchema> &table_schemas)
     virtual_table_schema_creators,
     sys_view_schema_creators
   };
+  divide_index.reset();
+  divide_index.push_back(0);
 
   ObTableSchema table_schema;
   if (OB_FAIL(check_inner_stat())) {
@@ -857,6 +866,7 @@ int ObBootstrap::construct_all_schema(ObIArray<ObTableSchema> &table_schemas)
   } else {
     HEAP_VAR(ObTableSchema, data_schema) {
       for (int64_t i = 0; OB_SUCC(ret) && i < ARRAYSIZEOF(creator_ptr_arrays); ++i) {
+        int start = table_schemas.count();
         for (const schema_create_func *creator_ptr = creator_ptr_arrays[i];
              OB_SUCCESS == ret && NULL != *creator_ptr; ++creator_ptr) {
           table_schema.reset();
@@ -890,11 +900,19 @@ int ObBootstrap::construct_all_schema(ObIArray<ObTableSchema> &table_schemas)
               LOG_WARN("push_back failed", KR(ret), K(table_schema));
             }
           }
+          if (table_schemas.count() - divide_index.at(divide_index.count() - 1) >= 40) {
+            divide_index.push_back(table_schemas.count());
+          }
         }
+        LOG_INFO("one round of construct schema finished", "count", table_schemas.count() - start);
       }
+    }
+    if (divide_index.at(divide_index.count() - 1) != table_schemas.count()) {
+      divide_index.push_back(table_schemas.count());
     }
   }
   BOOTSTRAP_CHECK_SUCCESS();
+  LOG_INFO("let me see divide index", K(divide_index));
   return ret;
 }
 
@@ -947,7 +965,8 @@ int ObBootstrap::broadcast_sys_schema(const ObSArray<ObTableSchema> &table_schem
 }
 
 int ObBootstrap::create_all_schema(ObDDLService &ddl_service,
-                                   ObIArray<ObTableSchema> &table_schemas)
+                                   ObIArray<ObTableSchema> &table_schemas,
+                                   ObIArray<int> &divide_index)
 {
   int ret = OB_SUCCESS;
   const int64_t begin_time = ObTimeUtility::current_time();
@@ -967,8 +986,9 @@ int ObBootstrap::create_all_schema(ObDDLService &ddl_service,
         LOG_WARN("fail to create __all_core_table's schema", KR(ret), K(core_table));
       }
     }
+    LOG_INFO("start to create table schema parallel");
     if (OB_FAIL(ret)) {
-    } else if (OB_FAIL(parallel_create_table_schema(ddl_service, table_schemas))) {
+    } else if (OB_FAIL(parallel_create_table_schema(ddl_service, table_schemas, divide_index))) {
       LOG_WARN("create_all_schema", K(ret));
     }
   }
@@ -977,48 +997,61 @@ int ObBootstrap::create_all_schema(ObDDLService &ddl_service,
   return ret;
 }
 
-int ObBootstrap::parallel_create_table_schema(ObDDLService &ddl_service, ObIArray<ObTableSchema> &table_schemas)
+int ObBootstrap::parallel_create_table_schema(
+    ObDDLService &ddl_service,
+    ObIArray<ObTableSchema> &table_schemas,
+    ObIArray<int> &divide_index)
 {
   int ret = OB_SUCCESS;
   int64_t begin = 0;
-  int64_t batch_count = BATCH_INSERT_SCHEMA_CNT;
-  const int64_t MAX_RETRY_TIMES = 10;
+  const int64_t THREAD_COUNT = 12;
+  const int64_t MAX_RETRY_TIMES = 8;
   int64_t finish_cnt = 0;
   std::vector<std::thread> ths;
   ObCurTraceId::TraceId *cur_trace_id = ObCurTraceId::get_trace_id();
-  for (int64_t i = 0; OB_SUCC(ret) && i < table_schemas.count(); ++i) {
-    if (table_schemas.count() == (i + 1) || (i + 1 - begin) >= batch_count) {
-      std::thread th([&, begin, i, cur_trace_id] () {
-        std::string thread_name = "work_job_" + std::to_string(begin);
-        lib::set_thread_name(thread_name.c_str());
-        ObCurTraceId::set(*cur_trace_id);
-        const int64_t job_begin_time = ObTimeUtility::current_time();
-        LOG_INFO("worker job start", "start time", job_begin_time);
+  std::atomic<int> cur_index(0);
+  for (int i = 0; i < THREAD_COUNT; i++) {
+    std::thread th([&, i, cur_trace_id]() {
+      int index = -1;
+      const int64_t begin_time = ObTimeUtility::current_time();
+      std::string thread_name = "work_job_" + std::to_string(i);
+      lib::set_thread_name(thread_name.c_str());
+      ObCurTraceId::set(*cur_trace_id);
+      do {
+        // 乐观锁
+        do {
+          index = cur_index.load(std::memory_order_relaxed);
+        } while(!cur_index.compare_exchange_weak(index, index + 1, std::memory_order_relaxed));
+
+        LOG_INFO("get lock success", K(index));
+        if (index >= divide_index.count() - 1) {
+          LOG_INFO("one thread finished", "cost", ObTimeUtility::current_time() - begin_time);
+          break;   // stop thread
+        }
+
+        int begin = divide_index.at(index);
+        int end = divide_index.at(index + 1);
+        int retry_times = 1;
         int ret = OB_SUCCESS;
-        int64_t retry_times = 1;
+        LOG_INFO("start to create schema batch", K(begin), K(end), "count", end - begin);
         while (OB_SUCC(ret)) {
-          if (OB_FAIL(batch_create_schema(ddl_service, table_schemas, begin, i + 1))) {
-            LOG_WARN("batch create schema failed", K(ret), "table count", i + 1 - begin);
-            // bugfix:
+          if (OB_FAIL(batch_create_schema(ddl_service, table_schemas, begin, end))) {
+            LOG_WARN("batch create schema failed", KR(ret), K(begin), K(end), "table count", end - begin);
             if (retry_times <= MAX_RETRY_TIMES) {
-              retry_times++;
-              ret = OB_SUCCESS;
               LOG_INFO("schema error while create table, need retry", KR(ret), K(retry_times));
-              usleep(1 * 1000 * 1000L); // 1s
+              ret = OB_SUCCESS;
+              retry_times++;
+              usleep(100 * 1000L); // 100ms
             }
           } else {
-            ATOMIC_AAF(&finish_cnt, i + 1 - begin);
+            ATOMIC_AAF(&finish_cnt, end - begin);
             break;
           }
         }
-        LOG_INFO("worker job end", K(begin), K(i), "table count", i + 1 - begin, K(ret), "cost", ObTimeUtility::current_time() - job_begin_time);
-      });
+      } while(true);
+    });
 
-      ths.push_back(std::move(th));
-      if (OB_SUCC(ret)) {
-        begin = i + 1;
-      }
-    }
+    ths.push_back(std::move(th));
   }
   for (auto &th : ths) {
     th.join();

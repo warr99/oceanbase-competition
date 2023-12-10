@@ -365,26 +365,9 @@ int ObLSCreator::process_after_has_member_list_(
       LOG_WARN("failed to update ls status", KR(ret), K(id_));
     } else if (!id_.is_sys_ls() && OB_FAIL(ls_operator.update_ls_status(
             tenant_id_, id_, share::OB_LS_CREATING, share::OB_LS_CREATED,
-            share::NORMAL_SWITCHOVER_STATUS, *proxy_))
-            /*OB_FAIL(ls_operator.update_ls_status(
-                  tenant_id_, id_, share::OB_LS_CREATING, share::OB_LS_NORMAL,
-                  share::NORMAL_SWITCHOVER_STATUS, *proxy_))*/) {
+            share::NORMAL_SWITCHOVER_STATUS, *proxy_))) {
       LOG_WARN("failed to update ls status", KR(ret), K(id_));        
     }
-    /*
-    // 把ls的状态转为CREATED
-    if (OB_FAIL(ls_operator.update_ls_status(
-            tenant_id_, id_, share::OB_LS_CREATING, share::OB_LS_CREATED,
-            share::NORMAL_SWITCHOVER_STATUS, *proxy_))) {
-      LOG_WARN("failed to update ls status", KR(ret), K(id_));
-    } else if (id_.is_sys_ls()) {
-      // 把sys_ls的status转为NORMAL
-      if (OB_FAIL(ls_operator.update_ls_status(
-                  tenant_id_, id_, share::OB_LS_CREATED, share::OB_LS_NORMAL,
-                  share::NORMAL_SWITCHOVER_STATUS, *proxy_))) {
-        LOG_WARN("failed to update ls status", KR(ret), K(id_));
-      }
-    }*/
   }
   LOG_INFO("process after has member list finished", KR(ret), K(tenant_id_), 
               K(id_), "cost", fast_current_time() - start_time);
