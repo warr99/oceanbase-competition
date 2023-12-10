@@ -2463,7 +2463,7 @@ int ObMultiVersionSchemaService::refresh_and_add_schema(const ObIArray<uint64_t>
                                                         ObSArray<ObTableSchema> *bootstrap_schemas/* = NULL*/)
 {
   FLOG_INFO("[REFRESH_SCHEMA] start to refresh and add schema", K(tenant_ids));
-  const int64_t start = ObTimeUtility::current_time();
+  const int64_t start = ObTimeUtility::fast_current_time();
   int ret = OB_SUCCESS;
   bool is_standby_cluster = GCTX.is_standby_cluster();
   if (!check_inner_stat()) {
@@ -2545,6 +2545,7 @@ int ObMultiVersionSchemaService::refresh_and_add_schema(const ObIArray<uint64_t>
         // Ignore that some tenants fail to refresh the schema,
         // and need to report an error to the upper layer to avoid pushing up last_refresh_schema_info
         int tmp_ret = OB_SUCCESS;
+        int64_t start_time = ObTimeUtility::fast_current_time();
         for (int64_t i = 0; i < tenant_ids.count(); i++) {
           const uint64_t tenant_id = tenant_ids.at(i);
           if (OB_NOT_NULL(bootstrap_schemas) && OB_SYS_TENANT_ID == tenant_id) {
@@ -2561,6 +2562,7 @@ int ObMultiVersionSchemaService::refresh_and_add_schema(const ObIArray<uint64_t>
             ret = tmp_ret;
           }
         }
+        LOG_INFO("finished fresh schema when tenant_ids is not empty", "cost", ObTimeUtility::fast_current_time() - start_time);
       }
     };
     CREATE_WITH_TEMP_ENTITY_P(!ObSchemaService::g_liboblog_mode_, RESOURCE_OWNER, common::OB_SERVER_TENANT_ID)
@@ -2573,7 +2575,7 @@ int ObMultiVersionSchemaService::refresh_and_add_schema(const ObIArray<uint64_t>
     }
   }
   FLOG_INFO("[REFRESH_SCHEMA] end refresh and add schema", KR(ret), K(tenant_ids),
-            "cost", ObTimeUtility::current_time() - start);
+            "cost", ObTimeUtility::fast_current_time() - start);
   return ret;
 }
 
