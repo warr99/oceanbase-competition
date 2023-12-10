@@ -823,7 +823,7 @@ private:
   int fetch_sys_tenant_ls_info();
   // create system table in mysql backend for debugging mode.
   int init_debug_database();
-  int do_restart();
+  int do_restart(bool after_bootstrap = false);
   int refresh_server(const bool fast_recover, const bool need_retry);
   int refresh_schema(const bool fast_recover);
   int init_sequence_id();

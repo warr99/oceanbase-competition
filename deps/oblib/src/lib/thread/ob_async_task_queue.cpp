@@ -99,6 +99,7 @@ int ObAsyncTaskQueue::push(const ObAsyncTask &task)
       allocator_.free(buf);
       buf = NULL;
     }
+    LOG_INFO("push success", K(ret));
   }
   return ret;
 }

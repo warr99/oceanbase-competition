@@ -1976,7 +1976,7 @@ int ObRootService::execute_bootstrap(const obrpc::ObBootstrapArg &arg)
     ObGlobalStatProxy global_proxy(sql_proxy_, OB_SYS_TENANT_ID);
     ObArray<ObAddr> self_addr;
     if (OB_FAIL(ret)) {
-    } else if (OB_FAIL(do_restart())) {
+    } else if (OB_FAIL(do_restart(true))) {
       LOG_WARN("do restart task failed", K(ret));
     } else if (OB_FAIL(check_ddl_allowed())) {
       LOG_WARN("fail to check ddl allowed", K(ret));
@@ -4971,13 +4971,14 @@ int ObRootService::init_debug_database()
   return ret;
 }
 
-int ObRootService::do_restart()
+int ObRootService::do_restart(bool after_bootstrap/*=false*/)
 {
   int ret = OB_SUCCESS;
 
   const int64_t tenant_id = OB_SYS_TENANT_ID;
   int64_t start_get_lock_time = fast_current_time();
-  // SpinWLockGuard rs_list_guard(broadcast_rs_list_lock_);
+  FLOG_INFO("[ROOTSERVICE_NOTICE] try to get lock for start do_restart");
+  SpinWLockGuard rs_list_guard(broadcast_rs_list_lock_);
 
   // NOTE: following log print after lock
   FLOG_INFO("[ROOTSERVICE_NOTICE] start do_restart", "cost", fast_current_time() - start_get_lock_time);
@@ -5008,12 +5009,12 @@ int ObRootService::do_restart()
   LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   // broadcast root server address, ignore error
   start_time = fast_current_time();
-  if (OB_SUCC(ret)) {
+  if (!after_bootstrap && OB_SUCC(ret)) {
     int tmp_ret = update_rslist();
     if (OB_SUCCESS != tmp_ret) {
       FLOG_WARN("failed to update rslist but ignored", KR(tmp_ret));
     }
-  } // 1.5s
+  }
   LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   start_time = fast_current_time();
   if (OB_SUCC(ret)) {
@@ -5064,13 +5065,13 @@ int ObRootService::do_restart()
   LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   // add other reload logic here
   start_time = fast_current_time();
-  /*if (FAILEDx(zone_manager_.reload())) {
+  if (FAILEDx(zone_manager_.reload())) {
     FLOG_WARN("zone_manager_ reload failed", KR(ret));
   } else {
     FLOG_INFO("success to reload zone_manager_");
   }
   LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
-  */// start timer tasks
+  // start timer tasks
   start_time = fast_current_time();
   if (FAILEDx(start_timer_tasks())) {
     FLOG_WARN("start timer tasks failed", KR(ret));
@@ -5097,7 +5098,6 @@ int ObRootService::do_restart()
     }
   }
   */
-  start_time = fast_current_time();
   if (FAILEDx(schema_history_recycler_.start())) {
     FLOG_WARN("schema_history_recycler start failed", KR(ret));
   } else {
@@ -5130,6 +5130,11 @@ int ObRootService::do_restart()
 
   // broadcast root server address again, this task must be in the end part of do_restart,
   // because system may work properly without it.
+  // if (OB_FAIL(submit_update_rslist_task(true))) {
+  //   FLOG_WARN("submit_update_rslist_task failed", KR(ret));
+  // } else {
+  //   FLOG_INFO("submit_update_rslist_task succeed");
+  // }
   if (FAILEDx(update_rslist())) {
     FLOG_WARN("broadcast root address failed but ignored", KR(ret));
     // it's ok ret be overwritten, update_rslist_task will retry until succeed
@@ -5204,7 +5209,7 @@ int ObRootService::do_restart()
   } else {
     FLOG_INFO("success to start disaster recovery task manager");
   }
-
+  start_time = fast_current_time();
   if (FAILEDx(rs_status_.set_rs_status(status::FULL_SERVICE))) {
     FLOG_WARN("fail to set rs status", KR(ret));
   } else {
