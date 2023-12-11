@@ -200,7 +200,7 @@ int ObCreateTenantExecutor::wait_user_ls_valid_(const uint64_t tenant_id)
       if (OB_FAIL(ret)) {
       } else if (user_ls_valid) {
       } else {
-        const int64_t INTERVAL = 500 * 1000L; // 500ms
+        const int64_t INTERVAL = 200 * 1000L; // 500ms
         LOG_INFO("wait user ls valid", KR(ret), K(tenant_id));
         ob_usleep(INTERVAL); // 等待了1次
       }
@@ -208,7 +208,7 @@ int ObCreateTenantExecutor::wait_user_ls_valid_(const uint64_t tenant_id)
     LOG_INFO("[CREATE TENANT] wait user ls created", KR(ret), K(tenant_id),
              "cost", ObTimeUtility::current_time() - start_ts);
 
-    if (OB_SUCC(ret)) {
+    /*if (OB_SUCC(ret)) {
       start_ts = ObTimeUtility::current_time();
       //wait user ls election
       if (OB_ISNULL(GCTX.lst_operator_)) {
@@ -224,7 +224,7 @@ int ObCreateTenantExecutor::wait_user_ls_valid_(const uint64_t tenant_id)
       }
       LOG_INFO("[CREATE TENANT] wait user ls election result", KR(ret), K(tenant_id),
                "cost", ObTimeUtility::current_time() - start_ts);
-    }
+    }*/
   }
   return ret;
 }
