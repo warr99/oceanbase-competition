@@ -1976,7 +1976,7 @@ int ObRootService::execute_bootstrap(const obrpc::ObBootstrapArg &arg)
     ObGlobalStatProxy global_proxy(sql_proxy_, OB_SYS_TENANT_ID);
     ObArray<ObAddr> self_addr;
     if (OB_FAIL(ret)) {
-    } else if (OB_FAIL(do_restart(true))) {
+    } else if (OB_FAIL(do_restart_after_bootstartp())) {
       LOG_WARN("do restart task failed", K(ret));
     } else if (OB_FAIL(check_ddl_allowed())) {
       LOG_WARN("fail to check ddl allowed", K(ret));
@@ -5008,15 +5008,13 @@ int ObRootService::do_restart(bool after_bootstrap/*=false*/)
   }
   LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
   // broadcast root server address, ignore error
-  start_time = fast_current_time();
-  if (!after_bootstrap && OB_SUCC(ret)) {
-    int tmp_ret = update_rslist();
-    if (OB_SUCCESS != tmp_ret) {
-      FLOG_WARN("failed to update rslist but ignored", KR(tmp_ret));
-    }
-  }
-  LOG_INFO("let me see cost", "cost", fast_current_time() - start_time);
-  start_time = fast_current_time();
+  // if (OB_SUCC(ret)) {
+  //   int tmp_ret = update_rslist();
+  //   if (OB_SUCCESS != tmp_ret) {
+  //     FLOG_WARN("failed to update rslist but ignored", KR(tmp_ret));
+  //   }
+  // }
+
   if (OB_SUCC(ret)) {
     //standby cluster trigger load_refresh_schema_status by heartbeat.
     //due to switchover, primary cluster need to load schema_status too.
@@ -5146,6 +5144,490 @@ int ObRootService::do_restart(bool after_bootstrap/*=false*/)
   } else {
     FLOG_INFO("broadcast root address succeed");
   }
+
+  if (FAILEDx(report_single_replica(tenant_id, SYS_LS))) {
+    FLOG_WARN("report all_core_table replica failed, but ignore",
+              KR(ret), K(tenant_id), K(SYS_LS));
+    // it's ok ret be overwritten, report single all_core will retry until succeed
+    if (OB_FAIL(submit_report_core_table_replica_task())) {
+      FLOG_WARN("submit all core table replica task failed", KR(ret));
+    } else {
+      FLOG_INFO("submit all core table replica task succeed");
+    }
+  } else {
+    FLOG_INFO("report all_core_table replica finish");
+  }
+
+  if (FAILEDx(ddl_scheduler_.start())) {
+    FLOG_WARN("fail to start ddl task scheduler", KR(ret));
+  } else {
+    FLOG_INFO("success to start ddl task scheduler");
+  }
+
+  if (FAILEDx(dbms_job::ObDBMSJobMaster::get_instance().start())) {
+    FLOG_WARN("failed to start dbms job master", KR(ret));
+  } else {
+    FLOG_INFO("success to start dbms job master");
+  }
+
+  if (FAILEDx(dbms_scheduler::ObDBMSSchedJobMaster::get_instance().start())) {
+    FLOG_WARN("failed to start dbms sched job master", KR(ret));
+  } else {
+    FLOG_INFO("success to start dbms sched job mstart");
+  }
+
+  if (OB_SUCC(ret)) {
+    upgrade_executor_.start();
+    FLOG_INFO("success to start upgrade_executor_", KR(ret));
+    upgrade_storage_format_executor_.start();
+    FLOG_INFO("success to start upgrade_storage_format_executor_", KR(ret));
+    create_inner_schema_executor_.start();
+    FLOG_INFO("success to start create_inner_schema_executor_", KR(ret));
+  }
+
+  // to avoid increase rootservice_epoch while fail to restart RS,
+  // put it and the end of restart RS.
+  if (FAILEDx(init_sequence_id())) {
+    FLOG_WARN("fail to init sequence id", KR(ret));
+  } else {
+    FLOG_INFO("success to init sequenxe id");
+  }
+
+
+#ifdef OB_BUILD_TDE_SECURITY
+  if (FAILEDx(master_key_mgr_.start())) {
+    FLOG_WARN("fail to start master key manager", KR(ret));
+  } else {
+    FLOG_INFO("success to start master key manager");
+  }
+#endif
+
+  if (FAILEDx(disaster_recovery_task_mgr_.start())) {
+    FLOG_WARN("disaster recovery task manager start failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start disaster recovery task manager");
+  }
+
+  if (FAILEDx(rs_status_.set_rs_status(status::FULL_SERVICE))) {
+    FLOG_WARN("fail to set rs status", KR(ret));
+  } else {
+    FLOG_INFO("full_service !!! start to work!!");
+    ROOTSERVICE_EVENT_ADD("root_service", "full_rootservice",
+                          "result", ret, K_(self_addr));
+    root_balancer_.set_active();
+    root_minor_freeze_.start();
+    FLOG_INFO("root_minor_freeze_ started");
+    root_inspection_.start();
+    FLOG_INFO("root_inspection_ started");
+    int64_t now = ObTimeUtility::current_time();
+    core_meta_table_version_ = now;
+    EVENT_SET(RS_START_SERVICE_TIME, now);
+    // reset fail count for self checker and print log.
+    reset_fail_count();
+  }
+
+  if (OB_FAIL(ret)) {
+    update_fail_count(ret);
+  }
+
+  FLOG_INFO("[ROOTSERVICE_NOTICE] finish do_restart", KR(ret));
+  return ret;
+}
+
+int ObRootService::do_restart_after_bootstartp()
+{
+  int ret = OB_SUCCESS;
+
+  const int64_t tenant_id = OB_SYS_TENANT_ID;
+  SpinWLockGuard rs_list_guard(broadcast_rs_list_lock_);
+
+  // NOTE: following log print after lock
+  FLOG_INFO("[ROOTSERVICE_NOTICE] start do_restart in do_restart_after_bootstartp()");
+
+  if (!inited_) {
+    ret = OB_NOT_INIT;
+    FLOG_WARN("not init", KR(ret));
+  } else if (!ObRootServiceRoleChecker::is_rootserver()) {
+    ret = OB_NOT_MASTER;
+    FLOG_WARN("not master", KR(ret));
+  }
+
+  // renew master rootservice, ignore error
+  if (OB_SUCC(ret)) {
+    int tmp_ret = rs_mgr_->renew_master_rootserver();
+    if (OB_SUCCESS != tmp_ret) {
+      FLOG_WARN("renew master rootservice failed", KR(tmp_ret));
+    }
+  }
+
+  //fetch root partition info
+  if (FAILEDx(fetch_sys_tenant_ls_info())) {
+    FLOG_WARN("fetch root partition info failed", KR(ret));
+  } else {
+    FLOG_INFO("fetch root partition info succeed", KR(ret));
+  }
+
+
+  if (OB_SUCC(ret)) {
+    //standby cluster trigger load_refresh_schema_status by heartbeat.
+    //due to switchover, primary cluster need to load schema_status too.
+    ObSchemaStatusProxy *schema_status_proxy = GCTX.schema_status_proxy_;
+    if (OB_ISNULL(schema_status_proxy)) {
+      ret = OB_ERR_UNEXPECTED;
+      FLOG_WARN("schema_status_proxy is null", KR(ret));
+    } else if (OB_FAIL(schema_status_proxy->load_refresh_schema_status())) {
+      FLOG_WARN("fail to load refresh schema status", KR(ret));
+    } else {
+      FLOG_INFO("load schema status success");
+    }
+  }
+
+  bool load_frozen_status = true;
+  const bool refresh_server_need_retry = false; // no need retry
+  // try fast recover
+  if (OB_SUCC(ret)) {
+    int tmp_ret = refresh_server(load_frozen_status, refresh_server_need_retry);
+    if (OB_SUCCESS != tmp_ret) {
+      FLOG_WARN("refresh server failed", KR(tmp_ret), K(load_frozen_status));
+    }
+    tmp_ret = refresh_schema(load_frozen_status);
+    if (OB_SUCCESS != tmp_ret) {
+      FLOG_WARN("refresh schema failed", KR(tmp_ret), K(load_frozen_status));
+    }
+  }
+  load_frozen_status = false;
+  // refresh schema
+  if (FAILEDx(refresh_schema(load_frozen_status))) {
+    FLOG_WARN("refresh schema failed", KR(ret), K(load_frozen_status));
+  } else {
+    FLOG_INFO("success to refresh schema", K(load_frozen_status));
+  }
+
+  // refresh server manager
+  if (FAILEDx(refresh_server(load_frozen_status, refresh_server_need_retry))) {
+    FLOG_WARN("refresh server failed", KR(ret), K(load_frozen_status));
+  } else {
+    FLOG_INFO("success to refresh server", K(load_frozen_status));
+  }
+
+  // add other reload logic here
+  if (FAILEDx(zone_manager_.reload())) {
+    FLOG_WARN("zone_manager_ reload failed", KR(ret));
+  } else {
+    FLOG_INFO("success to reload zone_manager_");
+  }
+
+  // start timer tasks
+  if (FAILEDx(start_timer_tasks())) {
+    FLOG_WARN("start timer tasks failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start timer tasks");
+  }
+
+  DEBUG_SYNC(BEFORE_UNIT_MANAGER_LOAD);
+  if (FAILEDx(unit_manager_.load())) {
+    FLOG_WARN("unit_manager_ load failed", KR(ret));
+  } else {
+    FLOG_INFO("load unit_manager success");
+  }
+
+  /*
+   * FIXME: wanhong.wwh: need re-implement
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(set_core_table_unit_id())) {
+      LOG_WARN("START_SERVICE: set core table partition unit failed", K(ret));
+    } else {
+      ObTaskController::get().allow_next_syslog();
+      LOG_INFO("START_SERVICE: set core table unit id success");
+    }
+  }
+  */
+
+  if (FAILEDx(schema_history_recycler_.start())) {
+    FLOG_WARN("schema_history_recycler start failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start schema_history_recycler");
+  }
+
+  if (FAILEDx(root_balancer_.start())) {
+    FLOG_WARN("root balancer start failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start root balancer");
+  }
+
+  if (FAILEDx(thread_checker_.start())) {
+    FLOG_WARN("rs_monitor_check: start thread checker failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start thread checker");
+  }
+
+  if (FAILEDx(empty_server_checker_.start())) {
+    FLOG_WARN("start empty server checker failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start empty server checker");
+  }
+
+  if (FAILEDx(lost_replica_checker_.start())) {
+    FLOG_WARN("start lost replica checker failed", KR(ret));
+  } else {
+    FLOG_INFO("start lost replica checker success");
+  }
+
+  // broadcast root server address again, this task must be in the end part of do_restart,
+  // because system may work properly without it.
+  // if (FAILEDx(update_rslist())) {
+  //   FLOG_WARN("broadcast root address failed but ignored", KR(ret));
+  //   // it's ok ret be overwritten, update_rslist_task will retry until succeed
+  //   if (OB_FAIL(submit_update_rslist_task(true))) {
+  //     FLOG_WARN("submit_update_rslist_task failed", KR(ret));
+  //   } else {
+  //     FLOG_INFO("submit_update_rslist_task succeed");
+  //   }
+  // } else {
+  //   FLOG_INFO("broadcast root address succeed");
+  // }
+
+  if (FAILEDx(report_single_replica(tenant_id, SYS_LS))) {
+    FLOG_WARN("report all_core_table replica failed, but ignore",
+              KR(ret), K(tenant_id), K(SYS_LS));
+    // it's ok ret be overwritten, report single all_core will retry until succeed
+    if (OB_FAIL(submit_report_core_table_replica_task())) {
+      FLOG_WARN("submit all core table replica task failed", KR(ret));
+    } else {
+      FLOG_INFO("submit all core table replica task succeed");
+    }
+  } else {
+    FLOG_INFO("report all_core_table replica finish");
+  }
+
+  if (FAILEDx(ddl_scheduler_.start())) {
+    FLOG_WARN("fail to start ddl task scheduler", KR(ret));
+  } else {
+    FLOG_INFO("success to start ddl task scheduler");
+  }
+
+  if (FAILEDx(dbms_job::ObDBMSJobMaster::get_instance().start())) {
+    FLOG_WARN("failed to start dbms job master", KR(ret));
+  } else {
+    FLOG_INFO("success to start dbms job master");
+  }
+
+  if (FAILEDx(dbms_scheduler::ObDBMSSchedJobMaster::get_instance().start())) {
+    FLOG_WARN("failed to start dbms sched job master", KR(ret));
+  } else {
+    FLOG_INFO("success to start dbms sched job mstart");
+  }
+
+  if (OB_SUCC(ret)) {
+    upgrade_executor_.start();
+    FLOG_INFO("success to start upgrade_executor_", KR(ret));
+    upgrade_storage_format_executor_.start();
+    FLOG_INFO("success to start upgrade_storage_format_executor_", KR(ret));
+    create_inner_schema_executor_.start();
+    FLOG_INFO("success to start create_inner_schema_executor_", KR(ret));
+  }
+
+  // to avoid increase rootservice_epoch while fail to restart RS,
+  // put it and the end of restart RS.
+  if (FAILEDx(init_sequence_id())) {
+    FLOG_WARN("fail to init sequence id", KR(ret));
+  } else {
+    FLOG_INFO("success to init sequenxe id");
+  }
+
+
+#ifdef OB_BUILD_TDE_SECURITY
+  if (FAILEDx(master_key_mgr_.start())) {
+    FLOG_WARN("fail to start master key manager", KR(ret));
+  } else {
+    FLOG_INFO("success to start master key manager");
+  }
+#endif
+
+  if (FAILEDx(disaster_recovery_task_mgr_.start())) {
+    FLOG_WARN("disaster recovery task manager start failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start disaster recovery task manager");
+  }
+
+  if (FAILEDx(rs_status_.set_rs_status(status::FULL_SERVICE))) {
+    FLOG_WARN("fail to set rs status", KR(ret));
+  } else {
+    FLOG_INFO("full_service !!! start to work!!");
+    ROOTSERVICE_EVENT_ADD("root_service", "full_rootservice",
+                          "result", ret, K_(self_addr));
+    root_balancer_.set_active();
+    root_minor_freeze_.start();
+    FLOG_INFO("root_minor_freeze_ started");
+    root_inspection_.start();
+    FLOG_INFO("root_inspection_ started");
+    int64_t now = ObTimeUtility::current_time();
+    core_meta_table_version_ = now;
+    EVENT_SET(RS_START_SERVICE_TIME, now);
+    // reset fail count for self checker and print log.
+    reset_fail_count();
+  }
+
+  if (OB_FAIL(ret)) {
+    update_fail_count(ret);
+  }
+
+  FLOG_INFO("[ROOTSERVICE_NOTICE] finish do_restart", KR(ret));
+  return ret;
+}
+
+int ObRootService::do_restart_after_bootstartp()
+{
+  int ret = OB_SUCCESS;
+
+  const int64_t tenant_id = OB_SYS_TENANT_ID;
+  SpinWLockGuard rs_list_guard(broadcast_rs_list_lock_);
+
+  // NOTE: following log print after lock
+  FLOG_INFO("[ROOTSERVICE_NOTICE] start do_restart in do_restart_after_bootstartp()");
+
+  if (!inited_) {
+    ret = OB_NOT_INIT;
+    FLOG_WARN("not init", KR(ret));
+  } else if (!ObRootServiceRoleChecker::is_rootserver()) {
+    ret = OB_NOT_MASTER;
+    FLOG_WARN("not master", KR(ret));
+  }
+
+  // renew master rootservice, ignore error
+  if (OB_SUCC(ret)) {
+    int tmp_ret = rs_mgr_->renew_master_rootserver();
+    if (OB_SUCCESS != tmp_ret) {
+      FLOG_WARN("renew master rootservice failed", KR(tmp_ret));
+    }
+  }
+
+  //fetch root partition info
+  if (FAILEDx(fetch_sys_tenant_ls_info())) {
+    FLOG_WARN("fetch root partition info failed", KR(ret));
+  } else {
+    FLOG_INFO("fetch root partition info succeed", KR(ret));
+  }
+
+
+  if (OB_SUCC(ret)) {
+    //standby cluster trigger load_refresh_schema_status by heartbeat.
+    //due to switchover, primary cluster need to load schema_status too.
+    ObSchemaStatusProxy *schema_status_proxy = GCTX.schema_status_proxy_;
+    if (OB_ISNULL(schema_status_proxy)) {
+      ret = OB_ERR_UNEXPECTED;
+      FLOG_WARN("schema_status_proxy is null", KR(ret));
+    } else if (OB_FAIL(schema_status_proxy->load_refresh_schema_status())) {
+      FLOG_WARN("fail to load refresh schema status", KR(ret));
+    } else {
+      FLOG_INFO("load schema status success");
+    }
+  }
+
+  bool load_frozen_status = true;
+  const bool refresh_server_need_retry = false; // no need retry
+  // try fast recover
+  if (OB_SUCC(ret)) {
+    int tmp_ret = refresh_server(load_frozen_status, refresh_server_need_retry);
+    if (OB_SUCCESS != tmp_ret) {
+      FLOG_WARN("refresh server failed", KR(tmp_ret), K(load_frozen_status));
+    }
+    tmp_ret = refresh_schema(load_frozen_status);
+    if (OB_SUCCESS != tmp_ret) {
+      FLOG_WARN("refresh schema failed", KR(tmp_ret), K(load_frozen_status));
+    }
+  }
+  load_frozen_status = false;
+  // refresh schema
+  if (FAILEDx(refresh_schema(load_frozen_status))) {
+    FLOG_WARN("refresh schema failed", KR(ret), K(load_frozen_status));
+  } else {
+    FLOG_INFO("success to refresh schema", K(load_frozen_status));
+  }
+
+  // refresh server manager
+  if (FAILEDx(refresh_server(load_frozen_status, refresh_server_need_retry))) {
+    FLOG_WARN("refresh server failed", KR(ret), K(load_frozen_status));
+  } else {
+    FLOG_INFO("success to refresh server", K(load_frozen_status));
+  }
+
+  // add other reload logic here
+  if (FAILEDx(zone_manager_.reload())) {
+    FLOG_WARN("zone_manager_ reload failed", KR(ret));
+  } else {
+    FLOG_INFO("success to reload zone_manager_");
+  }
+
+  // start timer tasks
+  if (FAILEDx(start_timer_tasks())) {
+    FLOG_WARN("start timer tasks failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start timer tasks");
+  }
+
+  DEBUG_SYNC(BEFORE_UNIT_MANAGER_LOAD);
+  if (FAILEDx(unit_manager_.load())) {
+    FLOG_WARN("unit_manager_ load failed", KR(ret));
+  } else {
+    FLOG_INFO("load unit_manager success");
+  }
+
+  /*
+   * FIXME: wanhong.wwh: need re-implement
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(set_core_table_unit_id())) {
+      LOG_WARN("START_SERVICE: set core table partition unit failed", K(ret));
+    } else {
+      ObTaskController::get().allow_next_syslog();
+      LOG_INFO("START_SERVICE: set core table unit id success");
+    }
+  }
+  */
+
+  if (FAILEDx(schema_history_recycler_.start())) {
+    FLOG_WARN("schema_history_recycler start failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start schema_history_recycler");
+  }
+
+  if (FAILEDx(root_balancer_.start())) {
+    FLOG_WARN("root balancer start failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start root balancer");
+  }
+
+  if (FAILEDx(thread_checker_.start())) {
+    FLOG_WARN("rs_monitor_check: start thread checker failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start thread checker");
+  }
+
+  if (FAILEDx(empty_server_checker_.start())) {
+    FLOG_WARN("start empty server checker failed", KR(ret));
+  } else {
+    FLOG_INFO("success to start empty server checker");
+  }
+
+  if (FAILEDx(lost_replica_checker_.start())) {
+    FLOG_WARN("start lost replica checker failed", KR(ret));
+  } else {
+    FLOG_INFO("start lost replica checker success");
+  }
+
+  // broadcast root server address again, this task must be in the end part of do_restart,
+  // because system may work properly without it.
+  // if (FAILEDx(update_rslist())) {
+  //   FLOG_WARN("broadcast root address failed but ignored", KR(ret));
+  //   // it's ok ret be overwritten, update_rslist_task will retry until succeed
+  //   if (OB_FAIL(submit_update_rslist_task(true))) {
+  //     FLOG_WARN("submit_update_rslist_task failed", KR(ret));
+  //   } else {
+  //     FLOG_INFO("submit_update_rslist_task succeed");
+  //   }
+  // } else {
+  //   FLOG_INFO("broadcast root address succeed");
+  // }
 
   if (FAILEDx(report_single_replica(tenant_id, SYS_LS))) {
     FLOG_WARN("report all_core_table replica failed, but ignore",

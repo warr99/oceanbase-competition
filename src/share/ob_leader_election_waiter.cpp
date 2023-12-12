@@ -227,6 +227,7 @@ int ObLSLeaderElectionWaiter::check_sleep(
   const static int64_t max_step = 10 * 1000; // 10ms;
   while (!stop_ && escaped < interval_us) {
     const int32_t step = static_cast<int32_t>(std::min(max_step, interval_us - escaped));
+    LOG_INFO("check sleep", "sleep time", step);
     ob_usleep(step);
     escaped += step;
   }
